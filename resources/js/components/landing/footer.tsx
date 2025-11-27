@@ -62,12 +62,8 @@ export default function Footer() {
 
             <div className="mx-auto max-w-6xl px-6 pb-10">
                 <div className="h-px w-full bg-white/10 mb-4" />
-                <div className="flex flex-col gap-3 text-[12px] text-white/60 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-col gap-3 text-[12px] text-white/60 lg:flex-row lg:items-center lg:justify-center">
                     <div>© {year} LPMMP UMRAH. All rights reserved.</div>
-                    <div className="flex items-center gap-6">
-                        <a href="#" className="hover:text-white">Kebijakan Privasi</a>
-                        <a href="#" className="hover:text-white">Syarat & Ketentuan</a>
-                    </div>
                 </div>
             </div>
         </footer>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useScrollAnimation } from '@/lib/useScrollAnimation';
 
 type FeatureItem = {
     title: string;
@@ -85,24 +86,37 @@ const features: FeatureItem[] = [
 ];
 
 export default function MainFeature() {
+    const { ref, isVisible } = useScrollAnimation({ threshold: 0.1 });
+
     return (
         <section className="w-full bg-[#f8fafc]" id="fitur" style={{ fontFamily: 'Outfit, system-ui, sans-serif' }}>
             <div className="mx-auto max-w-6xl px-6 py-14">
-                <h2 className="mb-2 text-center text-[28px] font-semibold text-[#0f172a]">Fitur Utama Platform</h2>
-                <p className="mx-auto mb-10 max-w-3xl text-center text-[15px] leading-7 text-[#334155]">
-                    Semua yang Anda butuhkan untuk mengelola dokumen dan proses akreditasi dengan efisien dan aman
-                </p>
+                <div
+                    ref={ref}
+                    className={`scroll-animate ${isVisible ? 'visible' : ''}`}
+                >
+                    <h2 className="mb-2 text-center text-[28px] font-semibold text-[#0f172a]">Fitur Utama Platform</h2>
+                    <p className="mx-auto mb-10 max-w-3xl text-center text-[15px] leading-7 text-[#334155]">
+                        Semua yang Anda butuhkan untuk mengelola dokumen dan proses akreditasi dengan efisien dan aman
+                    </p>
+                </div>
 
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                    {features.map(({ title, description, Icon }) => (
-                        <div key={title} className="rounded-2xl border border-[#e2e8f0] bg-white p-6 shadow-sm">
+                    {features.map(({ title, description, Icon }, index) => (
+                        <div
+                            key={title}
+                            className={`rounded-2xl border border-[#e2e8f0] bg-white p-6 shadow-sm hover-lift hover-glow cursor-pointer transition-all duration-300 scroll-animate ${
+                                isVisible ? 'visible' : ''
+                            }`}
+                            style={{ animationDelay: `${index * 0.1}s` }}
+                        >
                             <div className="mb-4 flex items-center gap-3">
-                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#eef2f7] text-[#334155]">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#2563EB] text-white hover-rotate transition-all duration-300">
                                     <Icon width={22} height={22} />
                                 </div>
                                 <div className="text-[15px] font-semibold text-[#0f172a]">{title}</div>
                             </div>
-                            <p className="text-sm leading-6 text-[#475569]">{description}</p>
+                            <p className="text-sm leading-6 text-[#0f172a]">{description}</p>
                         </div>
                     ))}
                 </div>
