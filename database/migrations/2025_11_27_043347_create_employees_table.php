@@ -15,8 +15,8 @@ return new class extends Migration
         // Create enum types for PostgreSQL (if using PostgreSQL)
         $driver = DB::getDriverName();
         if ($driver === 'pgsql') {
-            DB::statement("CREATE TYPE employees_employment_status_enum AS ENUM ('active', 'inactive', 'retired', 'terminated')");
-            DB::statement("CREATE TYPE employees_employment_type_enum AS ENUM ('permanent', 'contract', 'part_time', 'intern')");
+            DB::statement("CREATE TYPE employees_employment_status_enum AS ENUM ('pns', 'pppk', 'kontrak', 'honorer', 'lainnya', 'TetapNonPNS', 'NonPNS', 'DosendenganPerjanjianKerja', 'cpns')");
+            DB::statement("CREATE TYPE employees_employment_type_enum AS ENUM ('tenaga_pendidik', 'tenaga_kependidikan', 'lainnya')");
             DB::statement("CREATE TYPE employees_gender_enum AS ENUM ('male', 'female')");
         }
 
@@ -29,8 +29,8 @@ return new class extends Migration
                 $table->string('gender')->nullable();
             } else {
                 // For SQLite and MySQL, use string with enum values enforced at application level
-                $table->string('employment_status')->nullable()->comment('Enum: active, inactive, retired, terminated');
-                $table->string('employment_type')->nullable()->comment('Enum: permanent, contract, part_time, intern');
+                $table->string('employment_status')->nullable()->comment('Enum: pns, pppk, kontrak, honorer, lainnya, TetapNonPNS, NonPNS, DosendenganPerjanjianKerja, cpns');
+                $table->string('employment_type')->nullable()->comment('Enum: tenaga_pendidik, tenaga_kependidikan, lainnya');
                 $table->string('gender')->nullable()->comment('Enum: male, female');
             }
 

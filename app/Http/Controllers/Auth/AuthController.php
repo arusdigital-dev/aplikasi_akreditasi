@@ -34,12 +34,37 @@ class AuthController extends Controller
         if (Auth::attempt($credentials, $request->boolean('remember'))) {
             $request->session()->regenerate();
 
-            return redirect()->intended(route('home'));
+            // Redirect to dashboard based on user role
+            $user = Auth::user();
+            $redirectTo = $this->getDashboardRoute($user);
+
+            return redirect()->intended($redirectTo);
         }
 
         return back()->withErrors([
             'email' => 'Email atau password tidak valid.',
         ])->onlyInput('email');
+    }
+
+    /**
+     * Get dashboard route based on user role.
+     */
+    private function getDashboardRoute(User $user): string
+    {
+        // Load roles if not already loaded
+        if (! $user->relationLoaded('roles')) {
+            $user->load('roles');
+        }
+
+        // Check if user has Admin LPMPP role
+        $hasAdminRole = $user->roles->contains('name', 'Admin LPMPP');
+
+        if ($hasAdminRole) {
+            return route('dashboard.index');
+        }
+
+        // Default to home if no specific role
+        return route('home');
     }
 
     /**
@@ -118,7 +143,10 @@ class AuthController extends Controller
 
             Auth::login($user);
 
-            return redirect()->route('home');
+            // Redirect to dashboard based on user role
+            $redirectTo = $this->getDashboardRoute($user);
+
+            return redirect($redirectTo);
         } catch (\Exception $e) {
             return redirect()->route('login')->withErrors([
                 'email' => 'Gagal melakukan autentikasi dengan Google. Silakan coba lagi.',

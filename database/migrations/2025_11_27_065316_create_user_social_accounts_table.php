@@ -16,7 +16,7 @@ return new class extends Migration
 
         // Create enum type for PostgreSQL (if using PostgreSQL)
         if ($driver === 'pgsql') {
-            DB::statement("CREATE TYPE user_social_accounts_provider_enum AS ENUM ('google', 'facebook', 'github', 'twitter', 'microsoft', 'apple')");
+            DB::statement("CREATE TYPE user_social_accounts_provider_enum AS ENUM ('google')");
         }
 
         Schema::create('user_social_accounts', function (Blueprint $table) use ($driver) {
@@ -25,7 +25,7 @@ return new class extends Migration
             if ($driver === 'pgsql') {
                 $table->string('provider');
             } else {
-                $table->string('provider')->comment('Enum: google, facebook, github, twitter, microsoft, apple');
+                $table->string('provider')->comment('Enum: google');
             }
             $table->string('provider_user_id', 255);
             $table->string('email', 255)->nullable();

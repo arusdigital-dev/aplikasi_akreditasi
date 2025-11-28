@@ -4,8 +4,13 @@ namespace App\Models;
 
 enum EmployeeEmploymentStatus: string
 {
-    case Active = 'active';
-    case Inactive = 'inactive';
-    case Retired = 'retired';
-    case Terminated = 'terminated';
+    case Pns = 'pns';
+    case Pppk = 'pppk';
+    case Kontrak = 'kontrak';
+    case Honorer = 'honorer';
+    case Lainnya = 'lainnya';
+    case TetapNonPNS = 'TetapNonPNS';
+    case NonPNS = 'NonPNS';
+    case DosendenganPerjanjianKerja = 'DosendenganPerjanjianKerja';
+    case Cpns = 'cpns';
 }

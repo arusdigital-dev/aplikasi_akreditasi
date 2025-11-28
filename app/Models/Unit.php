@@ -103,4 +103,12 @@ class Unit extends Model
             ->withPivot('user_id')
             ->withTimestamps();
     }
+
+    /**
+     * Get the activity logs for this unit.
+     */
+    public function activityLogs(): HasMany
+    {
+        return $this->hasMany(ActivityLog::class, 'unit_id');
+    }
 }

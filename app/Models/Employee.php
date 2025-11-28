@@ -5,11 +5,13 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Employee extends Model
 {
-    use HasFactory, HasUuids;
+    use HasFactory, HasUuids, SoftDeletes;
 
     /**
      * The table associated with the model.
@@ -100,5 +102,29 @@ class Employee extends Model
     public function primaryRoleAssignment(): ?EmployeeRoleAssignment
     {
         return $this->roleAssignments()->where('is_primary', true)->whereNull('revoked_at')->first();
+    }
+
+    /**
+     * Get the unit that the employee belongs to.
+     */
+    public function unit(): BelongsTo
+    {
+        return $this->belongsTo(Unit::class, 'unit_id');
+    }
+
+    /**
+     * Get the homebase unit that the employee belongs to.
+     */
+    public function homebaseUnit(): BelongsTo
+    {
+        return $this->belongsTo(Unit::class, 'homebase_unit_id');
+    }
+
+    /**
+     * Get the user account associated with this employee.
+     */
+    public function user(): HasMany
+    {
+        return $this->hasMany(User::class, 'employee_id');
     }
 }

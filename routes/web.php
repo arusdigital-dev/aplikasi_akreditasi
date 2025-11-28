@@ -1,6 +1,10 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Dashboard\AdminLPMPPController;
+use App\Http\Controllers\Dashboard\AssessorAssignmentController;
+use App\Http\Controllers\Dashboard\EmployeeController;
+use App\Http\Controllers\Dashboard\StatisticsController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -21,4 +25,19 @@ Route::middleware('guest')->group(function () {
 
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+
+    // Dashboard routes
+    Route::prefix('dashboard')->name('dashboard.')->group(function () {
+        Route::get('/', [AdminLPMPPController::class, 'index'])->name('index');
+    });
+
+    // Assessor Assignment routes
+    Route::resource('assessor-assignments', AssessorAssignmentController::class);
+
+    // Statistics routes
+    Route::get('/statistics', [StatisticsController::class, 'index'])->name('statistics.index');
+
+    // Employee routes
+    Route::resource('employees', EmployeeController::class);
+    Route::post('/employees/import', [EmployeeController::class, 'import'])->name('employees.import');
 });

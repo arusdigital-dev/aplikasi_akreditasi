@@ -1,0 +1,45 @@
+1. Dashboard Admin LPMPP
+Role: Admin LPMPP
+Tujuan: Mengelola keseluruhan proses akreditasi dan monitoring kelengkapan dokumen di seluruh unit.
+Fitur yang tersedia:
+Ringkasan Progress Akreditasi per Fakultas / Prodi / Unit.
+Penugasan Asesor (create, edit, assign, unassign).
+Rekap & Statistik Akreditasi (grafik status, kelengkapan, poin).
+Master Data Pegawai (lihat, edit, sinkron, tambah).
+Cetak & Simpan Laporan akreditasi versi standar LPMPP.
+Notifikasi Otomatis (deadline pengumpulan dokumen, reminder ke prodi/dosen).
+List Dokumen Bermasalah (expired, salah format, belum valid).
+
+2. Dashboard Koordinator Program Studi (Koor. Prodi)
+Role: Koordinator Prodi
+Tujuan: Upload, kelola dokumen, pantau kelengkapan, dan simulasi penilaian.
+Fitur yang tersedia:
+Upload Dokumen + Metadata (unit/fakultas/prodi/dosen/tendik).
+Daftar Dokumen Unit (filter berdasarkan kategori, status validasi).
+Laporan Kelengkapan Dokumen (otomatis).
+Notifikasi Pengingat ke dosen/tendik.Statistik Penilaian dari asesor.
+Simulasi Penilaian (berdasarkan standar BAN-PT/LAM).
+Poin Kriteria (lihat bobot/standar).
+Standar/Kriteria Akreditasi (read only).
+Rekap Nilai / Poin Akreditasi (per kriteria).
+Set / Lihat Target Akreditasi (misal target unggul, sangat baik, baik).
+
+3. Dashboard Assessor Internal
+Role: Asesor Internal
+Tujuan: Menilai dokumen, melihat simulasi, dan memberi skor.
+Fitur yang tersedia:
+Evaluasi Simulasi (upload catatan evaluasi).
+Poin Penilaian (read/edit sesuai penugasan).
+Statistik Penilaian (grafik nilai per unit/kriteria).
+Simulasi Akreditasi (read only terhadap skor total).
+
+4. Dashboard Pimpinan Universitas
+
+Role: Rektor / WR / Dekan / Kajur
+Tujuan: Melihat overview eksekutif dari akreditasi seluruh unit.
+Fitur yang tersedia:
+Dashboard Eksekutif (summary per fakultas, prodi, unit).
+Rekap Nilai / Poin akreditasi.
+Statistik Penilaian (skim cepat: unggul, sangat baik, baik).
+Laporan Eksekutif (read only, tidak bisa edit).
+Insight Kesiapan Akreditasi (gap analysis).

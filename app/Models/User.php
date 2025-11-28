@@ -136,4 +136,20 @@ class User extends Authenticatable
             ->withPivot('unit_id')
             ->withTimestamps();
     }
+
+    /**
+     * Get the activity logs for this user.
+     */
+    public function activityLogs(): HasMany
+    {
+        return $this->hasMany(ActivityLog::class, 'user_id');
+    }
+
+    /**
+     * Get the assignments where this user is the assessor.
+     */
+    public function assignments(): HasMany
+    {
+        return $this->hasMany(Assignment::class, 'assessor_id');
+    }
 }

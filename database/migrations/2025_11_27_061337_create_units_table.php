@@ -15,7 +15,7 @@ return new class extends Migration
         // Create enum type for PostgreSQL (if using PostgreSQL)
         $driver = DB::getDriverName();
         if ($driver === 'pgsql') {
-            DB::statement("CREATE TYPE units_type_enum AS ENUM ('fakultas', 'jurusan', 'program_studi', 'unit', 'lembaga')");
+            DB::statement("CREATE TYPE units_type_enum AS ENUM ('universitas', 'fakultas', 'jurusan', 'prodi', 'pascasarjana', 'unit_kerja')");
         }
 
         Schema::create('units', function (Blueprint $table) use ($driver) {
@@ -25,7 +25,7 @@ return new class extends Migration
                 $table->string('type');
             } else {
                 // For SQLite and MySQL, use string with enum values enforced at application level
-                $table->string('type')->comment('Enum: fakultas, jurusan, program_studi, unit, lembaga');
+                $table->string('type')->comment('Enum: universitas, fakultas, jurusan, prodi, pascasarjana, unit_kerja');
             }
 
             $table->string('name', 255);

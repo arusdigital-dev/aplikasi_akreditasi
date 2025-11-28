@@ -15,8 +15,7 @@ return new class extends Migration
     {
         $driver = DB::getDriverName();
 
-        // Check if ID is already UUID
-        $columnType = DB::select('PRAGMA table_info(users)')[0]->type ?? null;
+        // Check if ID is already UUID (only for SQLite)
         if ($driver === 'sqlite') {
             $tableInfo = DB::select('PRAGMA table_info(users)');
             $idColumn = collect($tableInfo)->firstWhere('name', 'id');
@@ -93,10 +92,12 @@ return new class extends Migration
                 }
             }
 
-            // Add temporary UUID column
-            Schema::table('users', function (Blueprint $table) {
-                $table->char('uuid_temp', 36)->nullable()->after('id');
-            });
+            // Add temporary UUID column (if not exists)
+            if (! Schema::hasColumn('users', 'uuid_temp')) {
+                Schema::table('users', function (Blueprint $table) {
+                    $table->char('uuid_temp', 36)->nullable()->after('id');
+                });
+            }
 
             // Generate UUIDs for existing records
             $users = DB::table('users')->get();
@@ -121,13 +122,25 @@ return new class extends Migration
                 });
             }
 
-            // Drop old ID column and rename UUID column
-            Schema::table('users', function (Blueprint $table) {
-                $table->dropPrimary();
-            });
-
-            DB::statement('ALTER TABLE users DROP COLUMN id');
-            DB::statement('ALTER TABLE users CHANGE uuid_temp id CHAR(36) NOT NULL PRIMARY KEY');
+            // For MySQL: Remove auto-increment, drop primary, change column, add primary back
+            if ($driver === 'mysql') {
+                // Remove auto-increment first
+                DB::statement('ALTER TABLE users MODIFY id BIGINT UNSIGNED NOT NULL');
+                // Drop primary key
+                DB::statement('ALTER TABLE users DROP PRIMARY KEY');
+                // Drop old ID column
+                DB::statement('ALTER TABLE users DROP COLUMN id');
+                // Rename UUID column to id and set as primary
+                DB::statement('ALTER TABLE users CHANGE uuid_temp id CHAR(36) NOT NULL PRIMARY KEY');
+            } else {
+                // For PostgreSQL
+                Schema::table('users', function (Blueprint $table) {
+                    $table->dropPrimary();
+                });
+                DB::statement('ALTER TABLE users DROP COLUMN id');
+                DB::statement('ALTER TABLE users RENAME COLUMN uuid_temp TO id');
+                DB::statement('ALTER TABLE users ADD PRIMARY KEY (id)');
+            }
 
             // Update sessions table column type
             if (Schema::hasTable('sessions')) {

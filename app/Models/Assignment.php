@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class Assignment extends Model
 {
@@ -21,6 +22,13 @@ class Assignment extends Model
         'assessor_id',
         'assigned_date',
         'status',
+        'access_level',
+        'deadline',
+        'unit_id',
+        'notes',
+        'unassigned_at',
+        'unassigned_by',
+        'assignment_type',
     ];
 
     /**
@@ -32,7 +40,10 @@ class Assignment extends Model
     {
         return [
             'assigned_date' => 'date',
+            'deadline' => 'date',
             'status' => AssignmentStatus::class,
+            'access_level' => AssessorAccessLevel::class,
+            'unassigned_at' => 'datetime',
         ];
     }
 
@@ -50,5 +61,37 @@ class Assignment extends Model
     public function evaluations(): HasMany
     {
         return $this->hasMany(Evaluation::class, 'assignment_id');
+    }
+
+    /**
+     * Get the assessor (user) for this assignment.
+     */
+    public function assessor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assessor_id');
+    }
+
+    /**
+     * Get the unit for this assignment.
+     */
+    public function unit(): BelongsTo
+    {
+        return $this->belongsTo(Unit::class, 'unit_id');
+    }
+
+    /**
+     * Get the user who unassigned this assignment.
+     */
+    public function unassignedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'unassigned_by');
+    }
+
+    /**
+     * Check if assignment is active.
+     */
+    public function isActive(): bool
+    {
+        return $this->status !== AssignmentStatus::Cancelled && $this->unassigned_at === null;
     }
 }
