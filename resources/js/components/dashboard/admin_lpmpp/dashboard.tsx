@@ -4,6 +4,7 @@ import SummaryCard from './SummaryCard';
 import ProgressChart from './ProgressChart';
 import FacultyStatus from './FacultyStatus';
 import ProgramStatus from './ProgramStatus';
+import { route } from '@/lib/route';
 
 interface Stats {
     totalPrograms?: number;
@@ -105,17 +106,17 @@ export default function AdminLPMPPDashboard({
                     {/* Action Buttons */}
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <button className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors">
+                            <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                                 </svg>
                                 Export
                             </button>
-                            <div className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg">
-                                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div className="flex items-center gap-2 px-4 py-2 bg-white border border-blue-200 rounded-lg">
+                                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                 </svg>
-                                <span className="text-sm text-gray-700">15 November 2025</span>
+                                <span className="text-sm text-blue-700">15 November 2025</span>
                             </div>
                         </div>
                     </div>
@@ -144,8 +145,8 @@ export default function AdminLPMPPDashboard({
                         <div className="bg-white rounded-lg border border-gray-200 p-6">
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                                        <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                        <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                         </svg>
                                     </div>
@@ -154,7 +155,7 @@ export default function AdminLPMPPDashboard({
                             </div>
                             <div className="flex items-baseline gap-2">
                                 <span className="text-3xl font-bold text-gray-900">{stats?.inProgress || 0}</span>
-                                <span className="text-sm text-green-600 font-medium">+{stats?.inProgressChange || 0}%</span>
+                                <span className="text-sm text-blue-600 font-medium">+{stats?.inProgressChange || 0}%</span>
                             </div>
                             <p className="text-sm text-gray-500 mt-2">Dari bulan lalu</p>
                         </div>
@@ -163,8 +164,8 @@ export default function AdminLPMPPDashboard({
                         <div className="bg-white rounded-lg border border-gray-200 p-6">
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                                        <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                        <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                                         </svg>
                                     </div>
@@ -181,8 +182,8 @@ export default function AdminLPMPPDashboard({
                         <div className="bg-white rounded-lg border border-gray-200 p-6">
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                                        <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                        <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                                         </svg>
                                     </div>
@@ -190,7 +191,7 @@ export default function AdminLPMPPDashboard({
                                 </div>
                                 <Link
                                     href="/documents/issues"
-                                    className="w-8 h-8 bg-gray-900 text-white rounded-full flex items-center justify-center hover:bg-gray-800 transition-colors"
+                                    className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center hover:bg-blue-700 transition-colors"
                                 >
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -229,7 +230,7 @@ export default function AdminLPMPPDashboard({
                     <div className="bg-white rounded-lg border border-gray-200 p-6">
                         <div className="flex items-center justify-between mb-6">
                             <div className="flex items-center gap-2">
-                                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                                 </svg>
                                 <h2 className="text-lg font-semibold text-gray-900">Penugasan Asesor Terbaru</h2>
@@ -261,9 +262,9 @@ export default function AdminLPMPPDashboard({
                                             <td className="py-3 px-4 text-sm text-gray-700">{assignment.assigned_date}</td>
                                             <td className="py-3 px-4">
                                                 <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                                                    assignment.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                                    assignment.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
-                                                    'bg-yellow-100 text-yellow-800'
+                                                    assignment.status === 'completed' ? 'bg-blue-100 text-blue-800' :
+                                                    assignment.status === 'in_progress' ? 'bg-blue-200 text-blue-900' :
+                                                    'bg-blue-50 text-blue-700'
                                                 }`}>
                                                     {assignment.status === 'completed' ? 'Selesai' :
                                                      assignment.status === 'in_progress' ? 'Sedang' :
@@ -297,10 +298,10 @@ export default function AdminLPMPPDashboard({
                             </div>
                             <div className="space-y-3">
                                 {problemDocuments.map((doc, index) => (
-                                    <div key={index} className="flex items-center justify-between p-4 border border-red-200 bg-red-50 rounded-lg">
+                                    <div key={index} className="flex items-center justify-between p-4 border border-blue-200 bg-blue-50 rounded-lg">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                                                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                                                 </svg>
                                             </div>
@@ -310,7 +311,7 @@ export default function AdminLPMPPDashboard({
                                             </div>
                                         </div>
                                         <div className="text-right">
-                                            <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">
+                                            <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
                                                 {doc.issue_type}
                                             </span>
                                         </div>

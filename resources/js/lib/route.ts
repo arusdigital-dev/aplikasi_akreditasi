@@ -28,6 +28,21 @@ export function route(name: string, ...params: (string | number)[]): string {
         'employees.update': { url: (id: string | number) => `/employees/${id}`, method: 'put' },
         'employees.destroy': { url: (id: string | number) => `/employees/${id}`, method: 'delete' },
         'employees.import': { url: () => '/employees/import', method: 'post' },
+        'reports.index': { url: () => '/reports' },
+        'reports.document-completeness': { url: () => '/reports/document-completeness', method: 'post' },
+        'reports.document-completeness.preview': { url: () => '/reports/document-completeness/preview', method: 'post' },
+        'reports.assessor-evaluation': { url: () => '/reports/assessor-evaluation', method: 'post' },
+        'reports.executive': { url: () => '/reports/executive', method: 'post' },
+        'notifications.index': { url: () => '/notifications' },
+        'notifications.read': { url: (id: string | number) => `/notifications/${id}/read`, method: 'post' },
+        'notifications.read-all': { url: () => '/notifications/read-all', method: 'post' },
+        'documents.issues.index': { url: () => '/documents/issues' },
+        'documents.issues.show': { url: (id: string | number) => `/documents/issues/${id}` },
+        'documents.issues.notify': { url: (id: string | number) => `/documents/issues/${id}/notify`, method: 'post' },
+        'documents.issues.update-metadata': { url: (id: string | number) => `/documents/issues/${id}/metadata`, method: 'put' },
+        'documents.issues.download': { url: (id: string | number) => `/documents/issues/${id}/download` },
+        'documents.issues.resolve': { url: (id: string | number) => `/documents/issues/${id}/resolve`, method: 'post' },
+        'documents.issues.reject': { url: (id: string | number) => `/documents/issues/${id}/reject`, method: 'post' },
     };
 
     const routeFn = routeMap[name];

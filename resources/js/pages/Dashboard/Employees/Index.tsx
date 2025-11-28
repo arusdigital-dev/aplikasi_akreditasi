@@ -1,6 +1,7 @@
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import { useState } from 'react';
+import { route } from '@/lib/route';
 
 interface Employee {
     id: string;
@@ -110,7 +111,7 @@ export default function EmployeesIndex({ employees, filters, units, roles, study
         return (
             <span
                 className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                    isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                    isActive ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
                 }`}
             >
                 {status}
@@ -143,7 +144,7 @@ export default function EmployeesIndex({ employees, filters, units, roles, study
                             </button>
                             <Link
                                 href={route('employees.create')}
-                                className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                             >
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -227,7 +228,7 @@ export default function EmployeesIndex({ employees, filters, units, roles, study
                         <div className="mt-4">
                             <button
                                 onClick={handleFilter}
-                                className="w-full bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors"
+                                className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
                             >
                                 Filter
                             </button>
@@ -294,7 +295,7 @@ export default function EmployeesIndex({ employees, filters, units, roles, study
                                                         </Link>
                                                         <button
                                                             onClick={() => handleDelete(employee.id, employee.name)}
-                                                            className="text-red-600 hover:text-red-700 text-sm"
+                                                            className="text-blue-600 hover:text-blue-700 text-sm"
                                                         >
                                                             Hapus
                                                         </button>
@@ -326,7 +327,7 @@ export default function EmployeesIndex({ employees, filters, units, roles, study
                                             href={link.url || '#'}
                                             className={`px-3 py-1 text-sm rounded-lg ${
                                                 link.active
-                                                    ? 'bg-gray-900 text-white'
+                                                    ? 'bg-blue-600 text-white'
                                                     : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
                                             } ${!link.url ? 'opacity-50 cursor-not-allowed' : ''}`}
                                             dangerouslySetInnerHTML={{ __html: link.label }}
@@ -371,7 +372,7 @@ export default function EmployeesIndex({ employees, filters, units, roles, study
                                     <button
                                         type="submit"
                                         disabled={importProcessing || !importData.file}
-                                        className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
+                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
                                     >
                                         {importProcessing ? 'Mengimpor...' : 'Import'}
                                     </button>

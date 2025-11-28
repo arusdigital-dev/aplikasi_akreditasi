@@ -3,7 +3,9 @@
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Dashboard\AdminLPMPPController;
 use App\Http\Controllers\Dashboard\AssessorAssignmentController;
+use App\Http\Controllers\Dashboard\DocumentIssueController;
 use App\Http\Controllers\Dashboard\EmployeeController;
+use App\Http\Controllers\Dashboard\ReportController;
 use App\Http\Controllers\Dashboard\StatisticsController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -40,4 +42,27 @@ Route::middleware('auth')->group(function () {
     // Employee routes
     Route::resource('employees', EmployeeController::class);
     Route::post('/employees/import', [EmployeeController::class, 'import'])->name('employees.import');
+
+    // Notification routes
+    Route::get('/notifications', [\App\Http\Controllers\Dashboard\NotificationController::class, 'index'])->name('notifications.index');
+    Route::post('/notifications/{id}/read', [\App\Http\Controllers\Dashboard\NotificationController::class, 'markAsRead'])->name('notifications.read');
+    Route::post('/notifications/read-all', [\App\Http\Controllers\Dashboard\NotificationController::class, 'markAllAsRead'])->name('notifications.read-all');
+    Route::get('/api/notifications/unread-count', [\App\Http\Controllers\Dashboard\NotificationController::class, 'unreadCount'])->name('notifications.unread-count');
+    Route::get('/api/notifications/recent', [\App\Http\Controllers\Dashboard\NotificationController::class, 'recent'])->name('notifications.recent');
+
+    // Report routes
+    Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
+    Route::post('/reports/document-completeness/preview', [ReportController::class, 'previewDocumentCompleteness'])->name('reports.document-completeness.preview');
+    Route::post('/reports/document-completeness', [ReportController::class, 'generateDocumentCompleteness'])->name('reports.document-completeness');
+    Route::post('/reports/assessor-evaluation', [ReportController::class, 'generateAssessorEvaluation'])->name('reports.assessor-evaluation');
+    Route::post('/reports/executive', [ReportController::class, 'generateExecutive'])->name('reports.executive');
+
+    // Document Issues routes
+    Route::get('/documents/issues', [DocumentIssueController::class, 'index'])->name('documents.issues.index');
+    Route::get('/documents/issues/{id}', [DocumentIssueController::class, 'show'])->name('documents.issues.show');
+    Route::post('/documents/issues/{id}/notify', [DocumentIssueController::class, 'sendNotification'])->name('documents.issues.notify');
+    Route::put('/documents/issues/{id}/metadata', [DocumentIssueController::class, 'updateMetadata'])->name('documents.issues.update-metadata');
+    Route::get('/documents/issues/{id}/download', [DocumentIssueController::class, 'download'])->name('documents.issues.download');
+    Route::post('/documents/issues/{id}/resolve', [DocumentIssueController::class, 'resolve'])->name('documents.issues.resolve');
+    Route::post('/documents/issues/{id}/reject', [DocumentIssueController::class, 'reject'])->name('documents.issues.reject');
 });

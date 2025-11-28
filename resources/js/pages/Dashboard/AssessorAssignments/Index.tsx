@@ -1,6 +1,7 @@
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import { useState } from 'react';
+import { route } from '@/lib/route';
 
 interface Assessor {
     id: string;
@@ -92,10 +93,10 @@ export default function AssessorAssignmentsIndex({
 
     const getStatusBadge = (status: string) => {
         const statusMap: Record<string, { label: string; className: string }> = {
-            pending: { label: 'Pending', className: 'bg-yellow-100 text-yellow-800' },
+            pending: { label: 'Pending', className: 'bg-blue-50 text-blue-700' },
             in_progress: { label: 'Sedang', className: 'bg-blue-100 text-blue-800' },
-            completed: { label: 'Selesai', className: 'bg-green-100 text-green-800' },
-            cancelled: { label: 'Dibatalkan', className: 'bg-red-100 text-red-800' },
+            completed: { label: 'Selesai', className: 'bg-blue-200 text-blue-900' },
+            cancelled: { label: 'Dibatalkan', className: 'bg-blue-100 text-blue-800' },
         };
 
         const statusInfo = statusMap[status] || statusMap.pending;
@@ -132,11 +133,11 @@ export default function AssessorAssignmentsIndex({
                         </div>
                         <div className="bg-white rounded-lg border border-gray-200 p-4">
                             <p className="text-sm text-gray-600 mb-1">Selesai</p>
-                            <p className="text-2xl font-bold text-green-600">{monitoringStats.completed_assignments}</p>
+                            <p className="text-2xl font-bold text-blue-600">{monitoringStats.completed_assignments}</p>
                         </div>
                         <div className="bg-white rounded-lg border border-gray-200 p-4">
                             <p className="text-sm text-gray-600 mb-1">Terlambat</p>
-                            <p className="text-2xl font-bold text-red-600">{monitoringStats.overdue_assignments}</p>
+                            <p className="text-2xl font-bold text-blue-600">{monitoringStats.overdue_assignments}</p>
                         </div>
                     </div>
 
@@ -188,7 +189,7 @@ export default function AssessorAssignmentsIndex({
                             <div className="flex items-end">
                                 <button
                                     onClick={handleFilter}
-                                    className="w-full bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors"
+                                    className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
                                 >
                                     Filter
                                 </button>
@@ -201,7 +202,7 @@ export default function AssessorAssignmentsIndex({
                         <h2 className="text-lg font-semibold text-gray-900">Daftar Penugasan</h2>
                         <Link
                             href={route('assessor-assignments.create')}
-                            className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                         >
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -279,7 +280,7 @@ export default function AssessorAssignmentsIndex({
                                                         </Link>
                                                         <button
                                                             onClick={() => handleUnassign(assignment.id)}
-                                                            className="text-red-600 hover:text-red-700 text-sm"
+                                                            className="text-blue-600 hover:text-blue-700 text-sm"
                                                         >
                                                             Hapus
                                                         </button>
