@@ -1,4 +1,5 @@
 import { Link, router, usePage } from '@inertiajs/react';
+import { route } from '@/lib/route';
 
 export default function Sidebar() {
     const page = usePage();
@@ -17,9 +18,9 @@ export default function Sidebar() {
     };
 
     return (
-        <aside className="w-64 bg-white border-r border-gray-200 flex flex-col">
+        <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-screen flex-shrink-0">
             {/* Logo */}
-            <div className="p-6 border-b border-gray-200">
+            <div className="p-6 border-b border-gray-200 flex-shrink-0">
                 <div className="flex items-center gap-3">
                     <img src="/images/logo.png" alt="Logo" className="w-10 h-10 object-contain" />
                     <div>
@@ -30,9 +31,9 @@ export default function Sidebar() {
             </div>
 
             {/* Navigation */}
-            <nav className="flex-1 p-4 space-y-1">
+            <nav className="flex-1 p-4 space-y-1 overflow-x-hidden">
                 <Link
-                    href="/dashboard"
+                    href={route('dashboard.index')}
                     className={`flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg ${
                         isActive('/dashboard')
                             ? 'text-white bg-blue-600'
@@ -137,7 +138,7 @@ export default function Sidebar() {
             </nav>
 
             {/* Logout */}
-            <div className="p-4 border-t border-gray-200">
+            <div className="p-4 border-t border-gray-200 flex-shrink-0">
                 <button
                     onClick={handleLogout}
                     className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg w-full"

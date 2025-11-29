@@ -23,6 +23,7 @@ class DatabaseSeeder extends Seeder
 
         $this->call([
             AdminLPMPPSeeder::class,
+            CoordinatorProdiSeeder::class,
         ]);
     }
 }

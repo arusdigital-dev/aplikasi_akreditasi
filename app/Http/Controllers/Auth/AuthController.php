@@ -51,17 +51,18 @@ class AuthController extends Controller
      */
     private function getDashboardRoute(User $user): string
     {
-        // Load roles if not already loaded
-        if (! $user->relationLoaded('roles')) {
-            $user->load('roles');
-        }
-
-        // Check if user has Admin LPMPP role
-        $hasAdminRole = $user->roles->contains('name', 'Admin LPMPP');
-
-        if ($hasAdminRole) {
+        // Check if user is Admin LPMPP
+        if ($user->isAdminLPMPP()) {
             return route('dashboard.index');
         }
+
+        // Check if user is Koordinator Prodi
+        if ($user->isCoordinatorProdi()) {
+            return route('coordinator-prodi.index');
+        }
+
+        // Check for other roles (Assessor, Pimpinan, etc.)
+        // TODO: Add other role checks here
 
         // Default to home if no specific role
         return route('home');

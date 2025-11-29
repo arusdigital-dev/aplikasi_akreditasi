@@ -1,0 +1,1140 @@
+<?php
+
+namespace App\Http\Controllers\Dashboard;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\CoordinatorProdi\SendReminderRequest;
+use App\Http\Requests\CoordinatorProdi\SetTargetRequest;
+use App\Http\Requests\CoordinatorProdi\StoreDocumentRequest;
+use App\Http\Requests\CoordinatorProdi\UpdateDocumentRequest;
+use App\Models\AkreditasiTarget;
+use App\Models\Assignment;
+use App\Models\Criterion;
+use App\Models\Document;
+use App\Models\Employee;
+use App\Models\Evaluation;
+use App\Models\NotificationChannel;
+use App\Models\NotificationType;
+use App\Models\Program;
+use App\Models\Standard;
+use App\Services\NotificationService;
+use Carbon\Carbon;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
+use Inertia\Inertia;
+use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+
+class CoordinatorProdiController extends Controller
+{
+    public function __construct(
+        private NotificationService $notificationService
+    ) {
+        //
+    }
+
+    /**
+     * Display the coordinator prodi dashboard.
+     */
+    public function index(Request $request): Response
+    {
+        $user = Auth::user();
+        $year = $request->get('year', Carbon::now()->year);
+
+        // Get user's accessible programs
+        $programs = $user->accessiblePrograms()->get();
+
+        // Document statistics
+        $documentsQuery = Document::where('unit_id', $user->unit_id)
+            ->where('year', $year);
+
+        $totalDocuments = $documentsQuery->count();
+        $validatedDocuments = (clone $documentsQuery)->whereNotNull('validated_at')->count();
+        $pendingDocuments = (clone $documentsQuery)->whereNull('validated_at')->whereNull('rejected_by')->count();
+        $rejectedDocuments = (clone $documentsQuery)->whereNotNull('rejected_by')->count();
+        $expiredDocuments = (clone $documentsQuery)->where('expired_at', '<', Carbon::now())->count();
+
+        // Calculate completeness percentage
+        $completenessPercentage = $totalDocuments > 0
+            ? round(($validatedDocuments / $totalDocuments) * 100, 2)
+            : 0;
+
+        // Assessment statistics
+        $assignments = Assignment::where('unit_id', $user->unit_id)
+            ->with(['evaluations', 'criterion.standard.program'])
+            ->get();
+
+        $totalEvaluations = Evaluation::whereHas('assignment', function ($q) use ($user) {
+            $q->where('unit_id', $user->unit_id);
+        })->count();
+
+        $averageScore = Evaluation::whereHas('assignment', function ($q) use ($user) {
+            $q->where('unit_id', $user->unit_id);
+        })->avg('score') ?? 0;
+
+        // Get score recap per criteria
+        $scoreRecap = $this->calculateScoreRecap($user, $year);
+
+        // Get targets
+        $targets = AkreditasiTarget::whereIn('program_id', $programs->pluck('id'))
+            ->where('year', $year)
+            ->with('program')
+            ->get();
+
+        // Recent notifications
+        $recentNotifications = $user->notifications()
+            ->latest()
+            ->limit(5)
+            ->get();
+
+        // Progress chart data (last 7 days)
+        $progressChartData = $this->getProgressChartData($user, $year);
+
+        // Document status distribution
+        $documentStatusDistribution = [
+            'validated' => $validatedDocuments,
+            'pending' => $pendingDocuments,
+            'rejected' => $rejectedDocuments,
+            'expired' => $expiredDocuments,
+        ];
+
+        return Inertia::render('Dashboard/CoordinatorProdi/Index', [
+            'stats' => [
+                'totalDocuments' => $totalDocuments,
+                'validatedDocuments' => $validatedDocuments,
+                'pendingDocuments' => $pendingDocuments,
+                'rejectedDocuments' => $rejectedDocuments,
+                'expiredDocuments' => $expiredDocuments,
+                'completenessPercentage' => $completenessPercentage,
+                'totalEvaluations' => $totalEvaluations,
+                'averageScore' => round($averageScore, 2),
+            ],
+            'scoreRecap' => $scoreRecap,
+            'targets' => $targets,
+            'recentNotifications' => $recentNotifications,
+            'progressChartData' => $progressChartData,
+            'documentStatusDistribution' => $documentStatusDistribution,
+            'year' => $year,
+        ]);
+    }
+
+    /**
+     * Show the form for creating a new document.
+     */
+    public function createDocument(Request $request): Response
+    {
+        $user = Auth::user();
+        $programs = $user->accessiblePrograms()->get(['id', 'name']);
+
+        return Inertia::render('Dashboard/CoordinatorProdi/Documents/Create', [
+            'programs' => $programs,
+        ]);
+    }
+
+    /**
+     * Display documents list with filters.
+     */
+    public function documents(Request $request): Response
+    {
+        $user = Auth::user();
+
+        $query = Document::where('unit_id', $user->unit_id)
+            ->with(['program', 'uploadedBy', 'validatedBy', 'rejectedBy']);
+
+        // Filters
+        if ($request->filled('category')) {
+            $query->where('category', $request->category);
+        }
+
+        if ($request->filled('status')) {
+            match ($request->status) {
+                'validated' => $query->whereNotNull('validated_at'),
+                'pending' => $query->whereNull('validated_at')->whereNull('rejected_by'),
+                'rejected' => $query->whereNotNull('rejected_by'),
+                'expired' => $query->where('expired_at', '<', Carbon::now()),
+                default => null,
+            };
+        }
+
+        if ($request->filled('year')) {
+            $query->where('year', $request->year);
+        }
+
+        if ($request->filled('search')) {
+            $query->where('file_name', 'like', '%'.$request->search.'%');
+        }
+
+        $documents = $query->latest('created_at')
+            ->paginate($request->get('per_page', 15))
+            ->withQueryString();
+
+        // Get filter options
+        $categories = Document::where('unit_id', $user->unit_id)
+            ->distinct()
+            ->pluck('category')
+            ->filter()
+            ->sort()
+            ->values();
+
+        $years = Document::where('unit_id', $user->unit_id)
+            ->distinct()
+            ->pluck('year')
+            ->filter()
+            ->sortDesc()
+            ->values();
+
+        // Statistics
+        $stats = [
+            'total' => Document::where('unit_id', $user->unit_id)->count(),
+            'validated' => Document::where('unit_id', $user->unit_id)->whereNotNull('validated_at')->count(),
+            'pending' => Document::where('unit_id', $user->unit_id)->whereNull('validated_at')->whereNull('rejected_by')->count(),
+            'rejected' => Document::where('unit_id', $user->unit_id)->whereNotNull('rejected_by')->count(),
+        ];
+
+        return Inertia::render('Dashboard/CoordinatorProdi/Documents/Index', [
+            'documents' => $documents,
+            'categories' => $categories,
+            'years' => $years,
+            'stats' => $stats,
+            'filters' => $request->only(['category', 'status', 'year', 'search']),
+        ]);
+    }
+
+    /**
+     * Store a new document.
+     */
+    public function storeDocument(StoreDocumentRequest $request): RedirectResponse
+    {
+        $user = Auth::user();
+        $file = $request->file('file');
+
+        // Generate file path
+        $year = $request->year;
+        $programId = $request->program_id;
+        $fileName = time().'_'.str()->slug($file->getClientOriginalName());
+        $filePath = "documents/{$user->unit_id}/{$programId}/{$year}/{$fileName}";
+
+        // Store file
+        Storage::disk('local')->put($filePath, file_get_contents($file->getRealPath()));
+
+        // Create document record
+        $document = Document::create([
+            'unit_id' => $user->unit_id,
+            'program_id' => $request->program_id,
+            'file_path' => $filePath,
+            'file_name' => $file->getClientOriginalName(),
+            'file_type' => $file->getClientMimeType(),
+            'file_size' => $file->getSize(),
+            'category' => $request->category,
+            'year' => $year,
+            'metadata' => $request->metadata ?? [],
+            'uploaded_by' => $user->id,
+            'assignment_id' => $request->assignment_id,
+        ]);
+
+        return redirect()->route('coordinator-prodi.documents.index')
+            ->with('success', 'Dokumen berhasil diupload.');
+    }
+
+    /**
+     * Update document metadata.
+     */
+    public function updateDocument(UpdateDocumentRequest $request, string $id): RedirectResponse
+    {
+        $user = Auth::user();
+        $document = Document::where('unit_id', $user->unit_id)->findOrFail($id);
+
+        $updateData = [];
+
+        if ($request->hasFile('file')) {
+            // Delete old file
+            if ($document->file_path && Storage::disk('local')->exists($document->file_path)) {
+                Storage::disk('local')->delete($document->file_path);
+            }
+
+            // Store new file
+            $file = $request->file('file');
+            $fileName = time().'_'.str()->slug($file->getClientOriginalName());
+            $filePath = "documents/{$user->unit_id}/{$document->program_id}/{$document->year}/{$fileName}";
+
+            Storage::disk('local')->put($filePath, file_get_contents($file->getRealPath()));
+
+            $updateData = array_merge($updateData, [
+                'file_path' => $filePath,
+                'file_name' => $file->getClientOriginalName(),
+                'file_type' => $file->getClientMimeType(),
+                'file_size' => $file->getSize(),
+            ]);
+        }
+
+        if ($request->filled('category')) {
+            $updateData['category'] = $request->category;
+        }
+
+        if ($request->filled('year')) {
+            $updateData['year'] = $request->year;
+        }
+
+        if ($request->has('metadata')) {
+            $updateData['metadata'] = $request->metadata;
+        }
+
+        $document->update($updateData);
+
+        return redirect()->route('coordinator-prodi.documents.index')
+            ->with('success', 'Dokumen berhasil diperbarui.');
+    }
+
+    /**
+     * Delete a document.
+     */
+    public function deleteDocument(string $id): RedirectResponse
+    {
+        $user = Auth::user();
+        $document = Document::where('unit_id', $user->unit_id)->findOrFail($id);
+
+        // Delete file
+        if ($document->file_path && Storage::disk('local')->exists($document->file_path)) {
+            Storage::disk('local')->delete($document->file_path);
+        }
+
+        $document->delete();
+
+        return redirect()->route('coordinator-prodi.documents.index')
+            ->with('success', 'Dokumen berhasil dihapus.');
+    }
+
+    /**
+     * Download a document.
+     */
+    public function downloadDocument(string $id): BinaryFileResponse
+    {
+        $user = Auth::user();
+        $document = Document::where('unit_id', $user->unit_id)->findOrFail($id);
+
+        $filePath = Storage::disk('local')->path($document->file_path);
+
+        return response()->download($filePath, $document->file_name);
+    }
+
+    /**
+     * Display document completeness report.
+     */
+    public function documentCompleteness(Request $request): Response
+    {
+        $user = Auth::user();
+        $programId = $request->get('program_id');
+        $year = $request->get('year', Carbon::now()->year);
+
+        $programs = $user->accessiblePrograms();
+        if ($programId) {
+            $programs = $programs->where('id', $programId);
+        }
+        $programs = $programs->with(['standards.criteria.criteriaPoints'])->get();
+
+        $completenessData = [];
+
+        foreach ($programs as $program) {
+            $programData = [
+                'program_id' => $program->id,
+                'program_name' => $program->name,
+                'standards' => [],
+            ];
+
+            foreach ($program->standards as $standard) {
+                $standardData = [
+                    'standard_id' => $standard->id,
+                    'standard_name' => $standard->name,
+                    'total_criteria' => $standard->criteria->count(),
+                    'completed_criteria' => 0,
+                    'criteria' => [],
+                ];
+
+                foreach ($standard->criteria as $criterion) {
+                    // Check if documents exist for this criterion
+                    $documentsCount = Document::where('unit_id', $user->unit_id)
+                        ->where('program_id', $program->id)
+                        ->where('year', $year)
+                        ->whereHas('assignment', function ($q) use ($criterion) {
+                            $q->where('criteria_id', $criterion->id);
+                        })
+                        ->whereNotNull('validated_at')
+                        ->count();
+
+                    $isComplete = $documentsCount > 0;
+
+                    if ($isComplete) {
+                        $standardData['completed_criteria']++;
+                    }
+
+                    $standardData['criteria'][] = [
+                        'criteria_id' => $criterion->id,
+                        'criteria_name' => $criterion->name,
+                        'documents_required' => 1, // Placeholder
+                        'documents_available' => $documentsCount,
+                        'status' => $isComplete ? 'lengkap' : 'belum_lengkap',
+                        'missing_documents' => $isComplete ? [] : ['Dokumen untuk kriteria ini belum diupload'],
+                    ];
+                }
+
+                $standardData['completion_percentage'] = $standardData['total_criteria'] > 0
+                    ? round(($standardData['completed_criteria'] / $standardData['total_criteria']) * 100, 2)
+                    : 0;
+
+                $programData['standards'][] = $standardData;
+            }
+
+            // Calculate program summary
+            $totalCriteria = collect($programData['standards'])->sum('total_criteria');
+            $completedCriteria = collect($programData['standards'])->sum('completed_criteria');
+            $programData['total_criteria'] = $totalCriteria;
+            $programData['completed_criteria'] = $completedCriteria;
+            $programData['completion_percentage'] = $totalCriteria > 0
+                ? round(($completedCriteria / $totalCriteria) * 100, 2)
+                : 0;
+
+            $completenessData[] = $programData;
+        }
+
+        return Inertia::render('Dashboard/CoordinatorProdi/Reports/Completeness', [
+            'completenessData' => $completenessData,
+            'programs' => $user->accessiblePrograms()->get(['id', 'name']),
+            'filters' => [
+                'program_id' => $programId,
+                'year' => $year,
+            ],
+        ]);
+    }
+
+    /**
+     * Send reminder notification to dosen/tendik.
+     */
+    public function sendReminder(SendReminderRequest $request): RedirectResponse
+    {
+        $user = Auth::user();
+        $recipients = Employee::whereIn('id', $request->recipient_ids)->get();
+
+        $channels = match ($request->channel ?? 'both') {
+            'email' => [NotificationChannel::Email],
+            'whatsapp' => [NotificationChannel::WhatsApp],
+            default => [NotificationChannel::Email, NotificationChannel::WhatsApp],
+        };
+
+        $message = $request->message ?? 'Silakan lengkapi dokumen yang diperlukan untuk akreditasi.';
+
+        foreach ($recipients as $employee) {
+            // Find user associated with employee
+            $employeeUser = $employee->user()->first();
+            if ($employeeUser) {
+                $this->notificationService->sendToUser(
+                    $employeeUser,
+                    NotificationType::DeadlineReminder7Days,
+                    'Pengingat Dokumen Akreditasi',
+                    $message,
+                    [
+                        'recipient_type' => $request->recipient_type,
+                        'document_id' => $request->document_id,
+                    ],
+                    $channels
+                );
+            }
+        }
+
+        return redirect()->back()
+            ->with('success', 'Notifikasi pengingat berhasil dikirim.');
+    }
+
+    /**
+     * Display assessment statistics.
+     */
+    public function assessmentStatistics(Request $request): Response
+    {
+        $user = Auth::user();
+
+        $query = Evaluation::whereHas('assignment', function ($q) use ($user) {
+            $q->where('unit_id', $user->unit_id);
+        })->with(['assignment.criterion.standard.program', 'assignment.assessor', 'criteriaPoint']);
+
+        if ($request->filled('program_id')) {
+            $query->whereHas('assignment.criterion.standard', function ($q) use ($request) {
+                $q->where('program_id', $request->program_id);
+            });
+        }
+
+        if ($request->filled('criteria_id')) {
+            $query->whereHas('assignment', function ($q) use ($request) {
+                $q->where('criteria_id', $request->criteria_id);
+            });
+        }
+
+        if ($request->filled('assessor_id')) {
+            $query->whereHas('assignment', function ($q) use ($request) {
+                $q->where('assessor_id', $request->assessor_id);
+            });
+        }
+
+        if ($request->filled('year')) {
+            $query->whereHas('assignment', function ($q) use ($request) {
+                $q->whereYear('created_at', $request->year);
+            });
+        }
+
+        $evaluations = $query->get();
+
+        // Summary statistics
+        $summary = [
+            'total_evaluations' => $evaluations->count(),
+            'average_score' => $evaluations->avg('score') ?? 0,
+            'max_score' => $evaluations->max('score') ?? 0,
+            'min_score' => $evaluations->min('score') ?? 0,
+        ];
+
+        // Per criteria statistics
+        $perCriteria = $evaluations->groupBy(function ($eval) {
+            return $eval->assignment->criterion->id;
+        })->map(function ($group, $criteriaId) {
+            $criterion = $group->first()->assignment->criterion;
+
+            return [
+                'criteria_id' => $criteriaId,
+                'criteria_name' => $criterion->name,
+                'total_evaluations' => $group->count(),
+                'average_score' => $group->avg('score') ?? 0,
+                'max_score' => $group->max('score') ?? 0,
+            ];
+        })->values();
+
+        // Per assessor statistics
+        $perAssessor = $evaluations->groupBy(function ($eval) {
+            return $eval->assignment->assessor_id;
+        })->map(function ($group, $assessorId) {
+            $assessor = $group->first()->assignment->assessor;
+
+            return [
+                'assessor_id' => $assessorId,
+                'assessor_name' => $assessor?->name ?? 'N/A',
+                'total_evaluations' => $group->count(),
+                'average_score' => $group->avg('score') ?? 0,
+            ];
+        })->values();
+
+        // Chart data
+        $scoreDistribution = $this->getScoreDistribution($evaluations);
+        $progressPerCriteria = $perCriteria->toArray();
+        $timelineEvaluations = $this->getTimelineEvaluations($evaluations);
+
+        return Inertia::render('Dashboard/CoordinatorProdi/Statistics/Assessment', [
+            'summary' => $summary,
+            'perCriteria' => $perCriteria,
+            'perAssessor' => $perAssessor,
+            'scoreDistribution' => $scoreDistribution,
+            'progressPerCriteria' => $progressPerCriteria,
+            'timelineEvaluations' => $timelineEvaluations,
+            'programs' => $user->accessiblePrograms()->get(['id', 'name']),
+            'filters' => $request->only(['program_id', 'criteria_id', 'assessor_id', 'year']),
+        ]);
+    }
+
+    /**
+     * Display simulation results.
+     */
+    public function simulation(Request $request): Response
+    {
+        $user = Auth::user();
+        $programs = $user->accessiblePrograms()->get(['id', 'name']);
+
+        // If no program_id provided, use first accessible program or show selection
+        if (! $request->filled('program_id')) {
+            if ($programs->isEmpty()) {
+                return Inertia::render('Dashboard/CoordinatorProdi/Simulation/Index', [
+                    'simulationData' => [
+                        'program_id' => '',
+                        'program_name' => '',
+                        'year' => Carbon::now()->year,
+                        'standards' => [],
+                        'total_score' => 0,
+                        'max_possible_score' => 0,
+                        'total_percentage' => 0,
+                        'grade' => '',
+                    ],
+                    'programs' => [],
+                ]);
+            }
+            $program = $programs->first();
+        } else {
+            $request->validate([
+                'program_id' => ['required', 'string', 'exists:programs,id'],
+            ]);
+            $program = $user->accessiblePrograms()->findOrFail($request->program_id);
+        }
+
+        $request->validate([
+            'year' => ['nullable', 'integer', 'min:2020', 'max:2030'],
+        ]);
+
+        $programId = $program->id;
+        $year = $request->year ?? Carbon::now()->year;
+
+        $program->load(['standards.criteria.criteriaPoints', 'akreditasiTargets' => function ($q) use ($year) {
+            $q->where('year', $year);
+        }]);
+
+        $simulationData = [
+            'program_id' => $program->id,
+            'program_name' => $program->name,
+            'year' => $year,
+            'standards' => [],
+            'total_score' => 0,
+            'max_possible_score' => 0,
+        ];
+
+        foreach ($program->standards as $standard) {
+            $standardData = [
+                'standard_id' => $standard->id,
+                'standard_name' => $standard->name,
+                'weight' => $standard->weight,
+                'criteria' => [],
+                'simulated_score' => 0,
+                'max_score' => 0,
+            ];
+
+            foreach ($standard->criteria as $criterion) {
+                $criteriaData = [
+                    'criteria_id' => $criterion->id,
+                    'criteria_name' => $criterion->name,
+                    'weight' => $criterion->weight,
+                    'criteria_points' => [],
+                    'simulated_score' => 0,
+                    'max_score' => 0,
+                    'based_on' => 'default',
+                ];
+
+                $maxScore = $criterion->criteriaPoints->sum('max_score');
+                $criteriaData['max_score'] = $maxScore;
+
+                // Check if there are evaluations
+                $evaluations = Evaluation::whereHas('assignment', function ($q) use ($criterion, $user) {
+                    $q->where('criteria_id', $criterion->id)
+                        ->where('unit_id', $user->unit_id);
+                })->get();
+
+                if ($evaluations->isNotEmpty()) {
+                    // Use average score from evaluations
+                    $avgScore = $evaluations->avg('score') ?? 0;
+                    $criteriaData['simulated_score'] = $avgScore;
+                    $criteriaData['based_on'] = 'evaluations';
+                } else {
+                    // Check document completeness
+                    $documentsCount = Document::where('unit_id', $user->unit_id)
+                        ->where('program_id', $programId)
+                        ->where('year', $year)
+                        ->whereHas('assignment', function ($q) use ($criterion) {
+                            $q->where('criteria_id', $criterion->id);
+                        })
+                        ->whereNotNull('validated_at')
+                        ->count();
+
+                    if ($documentsCount > 0) {
+                        // Documents complete, use 80% of max score
+                        $criteriaData['simulated_score'] = $maxScore * 0.8;
+                        $criteriaData['based_on'] = 'document_completeness';
+                    } else {
+                        $criteriaData['simulated_score'] = 0;
+                        $criteriaData['based_on'] = 'default';
+                    }
+                }
+
+                // Calculate weighted score for this criteria
+                $weightedScore = ($criteriaData['simulated_score'] / $maxScore) * $criterion->weight;
+                $standardData['simulated_score'] += $weightedScore;
+                $standardData['max_score'] += $criterion->weight;
+
+                $standardData['criteria'][] = $criteriaData;
+            }
+
+            // Calculate percentage for standard
+            $standardData['percentage'] = $standardData['max_score'] > 0
+                ? round(($standardData['simulated_score'] / $standardData['max_score']) * 100, 2)
+                : 0;
+
+            $simulationData['standards'][] = $standardData;
+            $simulationData['total_score'] += $standardData['simulated_score'];
+            $simulationData['max_possible_score'] += $standardData['max_score'];
+        }
+
+        // Calculate total percentage and grade
+        $simulationData['total_percentage'] = $simulationData['max_possible_score'] > 0
+            ? round(($simulationData['total_score'] / $simulationData['max_possible_score']) * 100, 2)
+            : 0;
+
+        $simulationData['grade'] = $this->calculateGrade($simulationData['total_score']);
+
+        // Compare with target
+        $target = $program->akreditasiTargets->first();
+        if ($target) {
+            $simulationData['target'] = [
+                'target_score' => $target->target_score,
+                'target_grade' => $target->target_grade,
+                'gap_score' => $simulationData['total_score'] - $target->target_score,
+                'gap_percentage' => $simulationData['total_percentage'] - (($target->target_score / $simulationData['max_possible_score']) * 100),
+            ];
+        }
+
+        return Inertia::render('Dashboard/CoordinatorProdi/Simulation/Index', [
+            'simulationData' => $simulationData,
+            'programs' => $user->accessiblePrograms()->get(['id', 'name']),
+        ]);
+    }
+
+    /**
+     * Display criteria points.
+     */
+    public function criteriaPoints(Request $request): Response
+    {
+        $user = Auth::user();
+        $programs = $user->accessiblePrograms()->get(['id', 'name']);
+
+        // If no program_id provided, use first accessible program or show selection
+        if (! $request->filled('program_id')) {
+            if ($programs->isEmpty()) {
+                return Inertia::render('Dashboard/CoordinatorProdi/CriteriaPoints/Index', [
+                    'standards' => [],
+                    'totalWeight' => 0,
+                    'program' => null,
+                    'programs' => [],
+                    'filters' => [],
+                ]);
+            }
+            $program = $programs->first();
+        } else {
+            $request->validate([
+                'program_id' => ['required', 'string', 'exists:programs,id'],
+            ]);
+            $program = $user->accessiblePrograms()->findOrFail($request->program_id);
+        }
+
+        $request->validate([
+            'standard_id' => ['nullable', 'string', 'exists:standards,id'],
+            'criteria_id' => ['nullable', 'string', 'exists:criteria,id'],
+        ]);
+
+        $programId = $program->id;
+
+        $query = Standard::where('program_id', $programId)
+            ->with(['criteria.criteriaPoints']);
+
+        if ($request->filled('standard_id')) {
+            $query->where('id', $request->standard_id);
+        }
+
+        $standards = $query->orderBy('order_index')->get();
+
+        $totalWeight = $standards->sum('weight');
+
+        return Inertia::render('Dashboard/CoordinatorProdi/CriteriaPoints/Index', [
+            'standards' => $standards,
+            'totalWeight' => $totalWeight,
+            'program' => $program,
+            'programs' => $programs,
+            'filters' => $request->only(['standard_id', 'criteria_id']),
+        ]);
+    }
+
+    /**
+     * Display standards (read-only).
+     */
+    public function standards(Request $request): Response
+    {
+        $user = Auth::user();
+        $programs = $user->accessiblePrograms()->get(['id', 'name']);
+
+        // If no program_id provided, use first accessible program or show selection
+        if (! $request->filled('program_id')) {
+            if ($programs->isEmpty()) {
+                return Inertia::render('Dashboard/CoordinatorProdi/Standards/Index', [
+                    'program' => null,
+                    'programs' => [],
+                ]);
+            }
+            $program = $programs->first();
+        } else {
+            $request->validate([
+                'program_id' => ['required', 'string', 'exists:programs,id'],
+            ]);
+            $program = $user->accessiblePrograms()->findOrFail($request->program_id);
+        }
+
+        $programId = $program->id;
+
+        $program->load(['standards.criteria']);
+
+        return Inertia::render('Dashboard/CoordinatorProdi/Standards/Index', [
+            'program' => $program,
+            'programs' => $programs,
+        ]);
+    }
+
+    /**
+     * Display score recap.
+     */
+    public function scoreRecap(Request $request): Response
+    {
+        $user = Auth::user();
+        $programs = $user->accessiblePrograms()->get(['id', 'name']);
+
+        // If no program_id provided, use first accessible program or show selection
+        if (! $request->filled('program_id')) {
+            if ($programs->isEmpty()) {
+                return Inertia::render('Dashboard/CoordinatorProdi/ScoreRecap/Index', [
+                    'recapData' => [
+                        'program_id' => '',
+                        'program_name' => '',
+                        'year' => Carbon::now()->year,
+                        'standards' => [],
+                        'total_score' => 0,
+                        'max_possible_score' => 0,
+                        'total_percentage' => 0,
+                        'grade' => '',
+                    ],
+                    'scorePerCriteria' => [],
+                    'scorePerStandard' => [],
+                    'programs' => [],
+                    'filters' => [],
+                ]);
+            }
+            $program = $programs->first();
+        } else {
+            $request->validate([
+                'program_id' => ['required', 'string', 'exists:programs,id'],
+            ]);
+            $program = $user->accessiblePrograms()->findOrFail($request->program_id);
+        }
+
+        $request->validate([
+            'year' => ['nullable', 'integer', 'min:2020', 'max:2030'],
+            'standard_id' => ['nullable', 'string', 'exists:standards,id'],
+        ]);
+
+        $programId = $program->id;
+        $year = $request->year ?? Carbon::now()->year;
+
+        $program->load(['standards.criteria.criteriaPoints']);
+
+        $recapData = [
+            'program_id' => $program->id,
+            'program_name' => $program->name,
+            'year' => $year,
+            'standards' => [],
+            'total_score' => 0,
+            'max_possible_score' => 0,
+        ];
+
+        foreach ($program->standards as $standard) {
+            $standardData = [
+                'standard_id' => $standard->id,
+                'standard_name' => $standard->name,
+                'weight' => $standard->weight,
+                'criteria' => [],
+                'total_score' => 0,
+                'max_score' => 0,
+            ];
+
+            foreach ($standard->criteria as $criterion) {
+                $maxScore = $criterion->criteriaPoints->sum('max_score');
+
+                // Get evaluations for this criterion
+                $evaluations = Evaluation::whereHas('assignment', function ($q) use ($criterion, $user) {
+                    $q->where('criteria_id', $criterion->id)
+                        ->where('unit_id', $user->unit_id);
+                })->get();
+
+                $score = $evaluations->isNotEmpty() ? $evaluations->avg('score') : 0;
+                $lastEvaluationDate = $evaluations->isNotEmpty() ? $evaluations->latest('created_at')->first()->created_at : null;
+
+                $criteriaData = [
+                    'criteria_id' => $criterion->id,
+                    'criteria_name' => $criterion->name,
+                    'weight' => $criterion->weight,
+                    'score' => round($score, 2),
+                    'max_score' => $maxScore,
+                    'percentage' => $maxScore > 0 ? round(($score / $maxScore) * 100, 2) : 0,
+                    'evaluations_count' => $evaluations->count(),
+                    'last_evaluation_date' => $lastEvaluationDate?->format('Y-m-d H:i:s'),
+                ];
+
+                // Calculate weighted score
+                $weightedScore = ($score / $maxScore) * $criterion->weight;
+                $standardData['total_score'] += $weightedScore;
+                $standardData['max_score'] += $criterion->weight;
+
+                $standardData['criteria'][] = $criteriaData;
+            }
+
+            $standardData['percentage'] = $standardData['max_score'] > 0
+                ? round(($standardData['total_score'] / $standardData['max_score']) * 100, 2)
+                : 0;
+
+            $recapData['standards'][] = $standardData;
+            $recapData['total_score'] += $standardData['total_score'];
+            $recapData['max_possible_score'] += $standardData['max_score'];
+        }
+
+        $recapData['total_percentage'] = $recapData['max_possible_score'] > 0
+            ? round(($recapData['total_score'] / $recapData['max_possible_score']) * 100, 2)
+            : 0;
+
+        $recapData['grade'] = $this->calculateGrade($recapData['total_score']);
+
+        // Chart data
+        $scorePerCriteria = collect($recapData['standards'])
+            ->flatMap(fn ($std) => $std['criteria'])
+            ->map(fn ($crit) => [
+                'name' => $crit['criteria_name'],
+                'score' => $crit['score'],
+                'max_score' => $crit['max_score'],
+            ])
+            ->toArray();
+
+        $scorePerStandard = collect($recapData['standards'])
+            ->map(fn ($std) => [
+                'name' => $std['standard_name'],
+                'score' => $std['total_score'],
+                'max_score' => $std['max_score'],
+            ])
+            ->toArray();
+
+        return Inertia::render('Dashboard/CoordinatorProdi/ScoreRecap/Index', [
+            'recapData' => $recapData,
+            'scorePerCriteria' => $scorePerCriteria,
+            'scorePerStandard' => $scorePerStandard,
+            'programs' => $user->accessiblePrograms()->get(['id', 'name']),
+            'filters' => $request->only(['program_id', 'year', 'standard_id']),
+        ]);
+    }
+
+    /**
+     * Get targets.
+     */
+    public function getTargets(Request $request): Response
+    {
+        $user = Auth::user();
+        $programs = $user->accessiblePrograms()->get();
+
+        $targets = AkreditasiTarget::whereIn('program_id', $programs->pluck('id'))
+            ->with('program')
+            ->orderBy('year', 'desc')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return Inertia::render('Dashboard/CoordinatorProdi/Targets/Index', [
+            'targets' => $targets,
+            'programs' => $programs,
+        ]);
+    }
+
+    /**
+     * Show the form for creating a new target.
+     */
+    public function createTarget(Request $request): Response
+    {
+        $user = Auth::user();
+        $programs = $user->accessiblePrograms()->get(['id', 'name']);
+
+        return Inertia::render('Dashboard/CoordinatorProdi/Targets/Create', [
+            'programs' => $programs,
+        ]);
+    }
+
+    /**
+     * Set target.
+     */
+    public function setTarget(SetTargetRequest $request): RedirectResponse
+    {
+        $user = Auth::user();
+
+        // Verify program is accessible
+        $program = $user->accessiblePrograms()->findOrFail($request->program_id);
+
+        // Check if target already exists for this program and year
+        $existingTarget = AkreditasiTarget::where('program_id', $request->program_id)
+            ->where('year', $request->year)
+            ->first();
+
+        if ($existingTarget) {
+            $existingTarget->update([
+                'target_score' => $request->target_score,
+                'target_grade' => $request->target_grade,
+            ]);
+        } else {
+            AkreditasiTarget::create([
+                'program_id' => $request->program_id,
+                'year' => $request->year,
+                'target_score' => $request->target_score,
+                'target_grade' => $request->target_grade,
+            ]);
+        }
+
+        return redirect()->route('coordinator-prodi.targets.index')
+            ->with('success', 'Target akreditasi berhasil disimpan.');
+    }
+
+    /**
+     * Update target.
+     */
+    public function updateTarget(SetTargetRequest $request, string $id): RedirectResponse
+    {
+        $user = Auth::user();
+        $target = AkreditasiTarget::findOrFail($id);
+
+        // Verify program is accessible
+        $user->accessiblePrograms()->findOrFail($target->program_id);
+
+        $target->update([
+            'target_score' => $request->target_score,
+            'target_grade' => $request->target_grade,
+        ]);
+
+        return redirect()->route('coordinator-prodi.targets.index')
+            ->with('success', 'Target akreditasi berhasil diperbarui.');
+    }
+
+    /**
+     * Delete target.
+     */
+    public function deleteTarget(string $id): RedirectResponse
+    {
+        $user = Auth::user();
+        $target = AkreditasiTarget::findOrFail($id);
+
+        // Verify program is accessible
+        $user->accessiblePrograms()->findOrFail($target->program_id);
+
+        $target->delete();
+
+        return redirect()->route('coordinator-prodi.targets.index')
+            ->with('success', 'Target akreditasi berhasil dihapus.');
+    }
+
+    /**
+     * Calculate score recap.
+     */
+    private function calculateScoreRecap($user, int $year): array
+    {
+        $programs = $user->accessiblePrograms()->with(['standards.criteria'])->get();
+
+        $totalScore = 0;
+        $maxPossibleScore = 0;
+
+        foreach ($programs as $program) {
+            foreach ($program->standards as $standard) {
+                foreach ($standard->criteria as $criterion) {
+                    $maxScore = $criterion->criteriaPoints->sum('max_score') ?? 0;
+                    $maxPossibleScore += $maxScore;
+
+                    $evaluations = Evaluation::whereHas('assignment', function ($q) use ($criterion, $user) {
+                        $q->where('criteria_id', $criterion->id)
+                            ->where('unit_id', $user->unit_id);
+                    })->get();
+
+                    if ($evaluations->isNotEmpty()) {
+                        $totalScore += $evaluations->avg('score') ?? 0;
+                    }
+                }
+            }
+        }
+
+        return [
+            'total_score' => round($totalScore, 2),
+            'max_possible_score' => round($maxPossibleScore, 2),
+            'percentage' => $maxPossibleScore > 0 ? round(($totalScore / $maxPossibleScore) * 100, 2) : 0,
+        ];
+    }
+
+    /**
+     * Get progress chart data.
+     */
+    private function getProgressChartData($user, int $year): array
+    {
+        $data = [];
+
+        for ($i = 6; $i >= 0; $i--) {
+            $date = Carbon::now()->subDays($i);
+            $dayStart = $date->copy()->startOfDay();
+            $dayEnd = $date->copy()->endOfDay();
+
+            $documentsCount = Document::where('unit_id', $user->unit_id)
+                ->where('year', $year)
+                ->whereBetween('created_at', [$dayStart, $dayEnd])
+                ->count();
+
+            $data[] = [
+                'date' => $date->format('d M'),
+                'count' => $documentsCount,
+            ];
+        }
+
+        return $data;
+    }
+
+    /**
+     * Get score distribution.
+     */
+    private function getScoreDistribution($evaluations): array
+    {
+        $ranges = [
+            '0-20' => 0,
+            '21-40' => 0,
+            '41-60' => 0,
+            '61-80' => 0,
+            '81-100' => 0,
+        ];
+
+        foreach ($evaluations as $eval) {
+            $score = $eval->score;
+            if ($score <= 20) {
+                $ranges['0-20']++;
+            } elseif ($score <= 40) {
+                $ranges['21-40']++;
+            } elseif ($score <= 60) {
+                $ranges['41-60']++;
+            } elseif ($score <= 80) {
+                $ranges['61-80']++;
+            } else {
+                $ranges['81-100']++;
+            }
+        }
+
+        return $ranges;
+    }
+
+    /**
+     * Get timeline evaluations.
+     */
+    private function getTimelineEvaluations($evaluations): array
+    {
+        return $evaluations->groupBy(function ($eval) {
+            return $eval->created_at->format('Y-m-d');
+        })->map(function ($group, $date) {
+            return [
+                'date' => $date,
+                'count' => $group->count(),
+                'average_score' => round($group->avg('score') ?? 0, 2),
+            ];
+        })->values()->toArray();
+    }
+
+    /**
+     * Calculate grade based on score.
+     */
+    private function calculateGrade(float $score): string
+    {
+        return match (true) {
+            $score >= 361 => 'Unggul',
+            $score >= 301 => 'Sangat Baik',
+            $score >= 201 => 'Baik',
+            default => 'Kurang',
+        };
+    }
+}

@@ -21,6 +21,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'guest' => \Illuminate\Auth\Middleware\RedirectIfAuthenticated::class,
+            'admin.lpmpp' => \App\Http\Middleware\EnsureAdminLPMPP::class,
+            'coordinator.prodi' => \App\Http\Middleware\EnsureCoordinatorProdi::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

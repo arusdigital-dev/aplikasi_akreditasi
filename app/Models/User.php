@@ -122,8 +122,7 @@ class User extends Authenticatable
     public function unitRoles(): BelongsToMany
     {
         return $this->belongsToMany(Role::class, 'user_unit_roles', 'user_id', 'role_id')
-            ->withPivot('unit_id')
-            ->withTimestamps();
+            ->withPivot('unit_id');
     }
 
     /**
@@ -133,8 +132,7 @@ class User extends Authenticatable
     {
         return $this->belongsToMany(Role::class, 'user_unit_roles', 'user_id', 'role_id')
             ->wherePivot('unit_id', $unitId)
-            ->withPivot('unit_id')
-            ->withTimestamps();
+            ->withPivot('unit_id');
     }
 
     /**
@@ -159,5 +157,66 @@ class User extends Authenticatable
     public function notifications(): HasMany
     {
         return $this->hasMany(Notification::class, 'user_id');
+    }
+
+    /**
+     * Check if user has Admin LPMPP role.
+     */
+    public function isAdminLPMPP(): bool
+    {
+        if (! $this->relationLoaded('roles')) {
+            $this->load('roles');
+        }
+
+        return $this->roles->contains('name', 'Admin LPMPP');
+    }
+
+    /**
+     * Check if user has coordinator prodi role for a unit.
+     */
+    public function isCoordinatorProdi(?string $unitId = null): bool
+    {
+        $unitId = $unitId ?? $this->unit_id;
+
+        if (! $unitId) {
+            return false;
+        }
+
+        return $this->rolesForUnit($unitId)
+            ->whereIn('name', ['Koordinator Prodi', 'Koordinator Program Studi'])
+            ->exists();
+    }
+
+    /**
+     * Get programs accessible by coordinator.
+     * Programs are accessible if they belong to the user's unit (via fakultas field).
+     */
+    public function accessiblePrograms()
+    {
+        if (! $this->unit_id) {
+            return Program::query()->whereRaw('1 = 0'); // Empty result
+        }
+
+        $unit = $this->unit;
+
+        if (! $unit) {
+            return Program::query()->whereRaw('1 = 0'); // Empty result
+        }
+
+        // If unit is Fakultas, get programs with matching fakultas name
+        if ($unit->type->value === 'Fakultas') {
+            return Program::where('fakultas', $unit->name);
+        }
+
+        // If unit is Prodi, get programs with matching name or fakultas
+        $parentUnit = $unit->parent;
+        if ($parentUnit && $parentUnit->type->value === 'Fakultas') {
+            return Program::where('fakultas', $parentUnit->name)
+                ->orWhere('name', $unit->name);
+        }
+
+        // Fallback: get programs with matching unit name
+        return Program::where('fakultas', $unit->name)
+            ->orWhere('name', $unit->name);
     }
 }
