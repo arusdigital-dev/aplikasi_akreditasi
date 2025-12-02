@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class Evaluation extends Model
+class EvaluationNoteHistory extends Model
 {
     use HasFactory;
 
@@ -16,14 +16,12 @@ class Evaluation extends Model
      * @var list<string>
      */
     protected $fillable = [
-        'assignment_id',
-        'assessor_id',
-        'criteria_point_id',
-        'score',
+        'evaluation_note_id',
+        'user_id',
+        'action',
         'notes',
-        'descriptive_narrative',
-        'improvement_suggestion',
-        'evaluation_status',
+        'changes',
+        'version',
     ];
 
     /**
@@ -34,23 +32,23 @@ class Evaluation extends Model
     protected function casts(): array
     {
         return [
-            'score' => 'decimal:2',
+            'changes' => 'array',
         ];
     }
 
     /**
-     * Get the assignment for this evaluation.
+     * Get the evaluation note for this history.
      */
-    public function assignment(): BelongsTo
+    public function evaluationNote(): BelongsTo
     {
-        return $this->belongsTo(Assignment::class, 'assignment_id');
+        return $this->belongsTo(EvaluationNote::class, 'evaluation_note_id');
     }
 
     /**
-     * Get the criteria point for this evaluation.
+     * Get the user who performed this action.
      */
-    public function criteriaPoint(): BelongsTo
+    public function user(): BelongsTo
     {
-        return $this->belongsTo(CriteriaPoint::class, 'criteria_point_id');
+        return $this->belongsTo(User::class, 'user_id');
     }
 }

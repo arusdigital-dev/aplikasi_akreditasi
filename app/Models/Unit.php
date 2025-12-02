@@ -111,4 +111,12 @@ class Unit extends Model
     {
         return $this->hasMany(ActivityLog::class, 'unit_id');
     }
+
+    /**
+     * Get the assignments for this unit.
+     */
+    public function assignments(): HasMany
+    {
+        return $this->hasMany(Assignment::class, 'unit_id');
+    }
 }

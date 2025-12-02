@@ -20,8 +20,12 @@ export function route(name: string, params?: Record<string, any> | string | numb
         });
         allParams = additionalParams;
     } else {
-        // Handle legacy params array
-        allParams = params !== undefined ? [params, ...additionalParams] : additionalParams;
+        // Handle legacy params array - ensure params is string or number
+        if (params !== undefined && (typeof params === 'string' || typeof params === 'number')) {
+            allParams = [params, ...additionalParams];
+        } else {
+            allParams = additionalParams;
+        }
     }
     const routeMap: Record<string, any> = {
         'assessor-assignments.index': assessorAssignments.index,
@@ -80,6 +84,34 @@ export function route(name: string, params?: Record<string, any> | string | numb
         'coordinator-prodi.targets.store': { url: () => '/coordinator-prodi/targets', method: 'post' },
         'coordinator-prodi.targets.update': { url: (id: string | number) => `/coordinator-prodi/targets/${id}`, method: 'put' },
         'coordinator-prodi.targets.delete': { url: (id: string | number) => `/coordinator-prodi/targets/${id}`, method: 'delete' },
+        // Assessor Internal routes
+        'assessor-internal.index': { url: () => '/assessor-internal' },
+        'assessor-internal.dashboard': { url: () => '/assessor-internal' },
+        'assessor-internal.assignments.index': { url: () => '/assessor-internal/assignments' },
+        'assessor-internal.assignments.evaluate': { url: (assignmentId: string | number) => `/assessor-internal/assignments/${assignmentId}/evaluate` },
+        'assessor-internal.assignments.evaluations.store': { url: (assignmentId: string | number) => `/assessor-internal/assignments/${assignmentId}/evaluations`, method: 'post' },
+        'assessor-internal.assignments.evaluations.update': { url: (assignmentId: string | number) => `/assessor-internal/assignments/${assignmentId}/evaluations`, method: 'put' },
+        'assessor-internal.evaluation-documents.index': { url: () => '/assessor-internal/evaluation-documents' },
+        'assessor-internal.evaluation-documents.evaluate': { url: (documentId: string | number) => `/assessor-internal/evaluation-documents/${documentId}/evaluate` },
+        'assessor-internal.evaluation-documents.history': { url: (documentId: string | number) => `/assessor-internal/evaluation-documents/${documentId}/history` },
+        'assessor-internal.statistics.per-program': { url: () => '/assessor-internal/statistics/per-program' },
+        'assessor-internal.statistics.per-criterion': { url: () => '/assessor-internal/statistics/per-criterion' },
+        'assessor-internal.statistics.progress': { url: () => '/assessor-internal/statistics/progress' },
+        'assessor-internal.simulation': { url: () => '/assessor-internal/simulation' },
+        'assessor-internal.simulation.export.pdf': { url: () => '/assessor-internal/simulation/export/pdf' },
+        'assessor-internal.simulation.export.excel': { url: () => '/assessor-internal/simulation/export/excel' },
+        // Pimpinan routes
+        'pimpinan.dashboard': { url: () => '/pimpinan' },
+        'pimpinan.rekap-nilai': { url: () => '/pimpinan/rekap-nilai' },
+        'pimpinan.statistik-penilaian': { url: () => '/pimpinan/statistik-penilaian' },
+        'pimpinan.laporan-eksekutif': { url: () => '/pimpinan/laporan-eksekutif' },
+        'pimpinan.laporan-eksekutif.download': { url: (params?: { reportType?: string; format?: string }) => {
+            if (!params?.reportType || !params?.format) {
+                return '/pimpinan/laporan-eksekutif/download';
+            }
+            return `/pimpinan/laporan-eksekutif/download/${params.reportType}/${params.format}`;
+        }},
+        'pimpinan.insight-kesiapan': { url: () => '/pimpinan/insight-kesiapan' },
     };
 
     const routeFn = routeMap[name];
@@ -117,6 +149,12 @@ export function route(name: string, params?: Record<string, any> | string | numb
                 return routeFn.url(allParams[0]);
             }
             if (name.includes('.targets.') && (name.includes('.update') || name.includes('.delete'))) {
+                return routeFn.url(allParams[0]);
+            }
+        }
+        // For assessor-internal routes with parameters
+        if (name.includes('assessor-internal')) {
+            if (name.includes('.assignments.evaluate') || name.includes('.assignments.evaluations.') || name.includes('.evaluation-documents.')) {
                 return routeFn.url(allParams[0]);
             }
         }

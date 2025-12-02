@@ -61,8 +61,15 @@ class AuthController extends Controller
             return route('coordinator-prodi.index');
         }
 
-        // Check for other roles (Assessor, Pimpinan, etc.)
-        // TODO: Add other role checks here
+        // Check if user is Assessor Internal
+        if ($user->isAssessorInternal()) {
+            return route('assessor-internal.index');
+        }
+
+        // Check if user is Pimpinan
+        if ($user->isPimpinan()) {
+            return route('pimpinan.dashboard');
+        }
 
         // Default to home if no specific role
         return route('home');

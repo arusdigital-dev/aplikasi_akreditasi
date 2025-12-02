@@ -70,6 +70,45 @@ Route::middleware('auth')->group(function () {
     Route::get('/api/notifications/unread-count', [\App\Http\Controllers\Dashboard\NotificationController::class, 'unreadCount'])->name('notifications.unread-count');
     Route::get('/api/notifications/recent', [\App\Http\Controllers\Dashboard\NotificationController::class, 'recent'])->name('notifications.recent');
 
+    // Assessor Internal routes
+    Route::prefix('assessor-internal')->name('assessor-internal.')->middleware('assessor.internal')->group(function () {
+        // Dashboard
+        Route::get('/', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'dashboard'])->name('index');
+        // Dashboard - Evaluation Documents
+        Route::get('/evaluation-documents', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'index'])->name('evaluation-documents.index');
+        Route::get('/evaluation-documents/{documentId}/evaluate', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'showEvaluation'])->name('evaluation-documents.evaluate');
+        Route::get('/evaluation-documents/{documentId}/history', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'showHistory'])->name('evaluation-documents.history');
+        Route::post('/evaluation-notes', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'storeEvaluation'])->name('evaluation-notes.store');
+        Route::match(['put', 'patch'], '/evaluation-notes/{id}', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'updateEvaluation'])->name('evaluation-notes.update');
+        Route::get('/evaluation-notes/{id}/download/{type}', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'downloadEvaluationFile'])->name('evaluation-notes.download');
+
+        // Assessment Assignments (Poin Penilaian)
+        Route::get('/assignments', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'assignments'])->name('assignments.index');
+        Route::get('/assignments/{assignmentId}/evaluate', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'showAssignmentEvaluation'])->name('assignments.evaluate');
+        Route::post('/assignments/{assignmentId}/evaluations', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'storeAssignmentEvaluation'])->name('assignments.evaluations.store');
+        Route::match(['put', 'patch'], '/assignments/{assignmentId}/evaluations', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'updateAssignmentEvaluation'])->name('assignments.evaluations.update');
+
+        // Statistics
+        Route::get('/statistics/per-program', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'statisticsPerProgram'])->name('statistics.per-program');
+        Route::get('/statistics/per-criterion', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'statisticsPerCriterion'])->name('statistics.per-criterion');
+        Route::get('/statistics/progress', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'statisticsProgress'])->name('statistics.progress');
+
+        // Simulation
+        Route::get('/simulation', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'simulation'])->name('simulation');
+        Route::get('/simulation/export/pdf', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'exportSimulationPDF'])->name('simulation.export.pdf');
+        Route::get('/simulation/export/excel', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'exportSimulationExcel'])->name('simulation.export.excel');
+    });
+
+    // Pimpinan routes
+    Route::prefix('pimpinan')->name('pimpinan.')->middleware('pimpinan')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Dashboard\PimpinanController::class, 'dashboard'])->name('dashboard');
+        Route::get('/rekap-nilai', [\App\Http\Controllers\Dashboard\PimpinanController::class, 'rekapNilai'])->name('rekap-nilai');
+        Route::get('/statistik-penilaian', [\App\Http\Controllers\Dashboard\PimpinanController::class, 'statistikPenilaian'])->name('statistik-penilaian');
+        Route::get('/laporan-eksekutif', [\App\Http\Controllers\Dashboard\PimpinanController::class, 'laporanEksekutif'])->name('laporan-eksekutif');
+        Route::get('/laporan-eksekutif/download/{reportType}/{format}', [\App\Http\Controllers\Dashboard\PimpinanController::class, 'downloadLaporan'])->name('laporan-eksekutif.download');
+        Route::get('/insight-kesiapan', [\App\Http\Controllers\Dashboard\PimpinanController::class, 'insightKesiapan'])->name('insight-kesiapan');
+    });
+
     // Coordinator Prodi routes
     Route::prefix('coordinator-prodi')->name('coordinator-prodi.')->middleware('coordinator.prodi')->group(function () {
         // Dashboard

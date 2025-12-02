@@ -42,6 +42,9 @@ class HandleInertiaRequests extends Middleware
         $userRole = null;
         $isAdmin = false;
         $isCoordinator = false;
+        $isAssessorInternal = false;
+        $isPimpinan = false;
+        $pimpinanLevel = null;
 
         if ($user) {
             // Load roles if not already loaded
@@ -49,15 +52,37 @@ class HandleInertiaRequests extends Middleware
                 $user->load('roles');
             }
 
+            // Load unit roles if needed
+            if ($user->unit_id && ! $user->relationLoaded('unitRoles')) {
+                $user->load('unitRoles');
+            }
+
             // Determine user role
             $isAdmin = $user->isAdminLPMPP();
             $isCoordinator = $user->isCoordinatorProdi();
+            $isAssessorInternal = $user->isAssessorInternal();
+            $isPimpinan = $user->isPimpinan();
+            $pimpinanLevel = $user->getPimpinanLevel();
 
             // Get primary role name
             if ($isAdmin) {
                 $userRole = 'Admin LPMPP';
             } elseif ($isCoordinator) {
                 $userRole = 'Koordinator Prodi';
+            } elseif ($isAssessorInternal) {
+                $userRole = 'Asesor Internal';
+            } elseif ($isPimpinan) {
+                if ($user->isRektor()) {
+                    $userRole = 'Rektor';
+                } elseif ($user->isWakilRektor()) {
+                    $userRole = 'Wakil Rektor';
+                } elseif ($user->isDekan()) {
+                    $userRole = 'Dekan';
+                } elseif ($user->isWakilDekan()) {
+                    $userRole = 'Wakil Dekan';
+                } elseif ($user->isKajur()) {
+                    $userRole = 'Kajur';
+                }
             } elseif ($user->roles->isNotEmpty()) {
                 $userRole = $user->roles->first()->name;
             }
@@ -72,6 +97,9 @@ class HandleInertiaRequests extends Middleware
                 'role' => $userRole,
                 'isAdmin' => $isAdmin,
                 'isCoordinator' => $isCoordinator,
+                'isAssessorInternal' => $isAssessorInternal,
+                'isPimpinan' => $isPimpinan,
+                'pimpinanLevel' => $pimpinanLevel,
             ],
         ];
     }

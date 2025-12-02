@@ -188,6 +188,143 @@ class User extends Authenticatable
     }
 
     /**
+     * Check if user has Assessor Internal role.
+     */
+    public function isAssessorInternal(): bool
+    {
+        if (! $this->relationLoaded('roles')) {
+            $this->load('roles');
+        }
+
+        return $this->roles->contains('name', 'Asesor Internal');
+    }
+
+    /**
+     * Check if user is Rektor (universitas level).
+     */
+    public function isRektor(): bool
+    {
+        if (! $this->relationLoaded('roles')) {
+            $this->load('roles');
+        }
+
+        return $this->roles->contains('name', 'Rektor');
+    }
+
+    /**
+     * Check if user is Wakil Rektor (universitas level).
+     */
+    public function isWakilRektor(): bool
+    {
+        if (! $this->relationLoaded('roles')) {
+            $this->load('roles');
+        }
+
+        return $this->roles->contains('name', 'Wakil Rektor');
+    }
+
+    /**
+     * Check if user is Dekan (fakultas level).
+     */
+    public function isDekan(?string $unitId = null): bool
+    {
+        $unitId = $unitId ?? $this->unit_id;
+
+        if (! $unitId) {
+            return false;
+        }
+
+        return $this->rolesForUnit($unitId)
+            ->where('name', 'Dekan')
+            ->exists();
+    }
+
+    /**
+     * Check if user is Wakil Dekan (fakultas level).
+     */
+    public function isWakilDekan(?string $unitId = null): bool
+    {
+        $unitId = $unitId ?? $this->unit_id;
+
+        if (! $unitId) {
+            return false;
+        }
+
+        return $this->rolesForUnit($unitId)
+            ->where('name', 'Wakil Dekan')
+            ->exists();
+    }
+
+    /**
+     * Check if user is Kajur (prodi level).
+     */
+    public function isKajur(?string $unitId = null): bool
+    {
+        $unitId = $unitId ?? $this->unit_id;
+
+        if (! $unitId) {
+            return false;
+        }
+
+        return $this->rolesForUnit($unitId)
+            ->where('name', 'Kajur')
+            ->exists();
+    }
+
+    /**
+     * Check if user is any pimpinan role.
+     */
+    public function isPimpinan(): bool
+    {
+        // Check for universitas level roles (Rektor, Wakil Rektor)
+        if (! $this->relationLoaded('roles')) {
+            $this->load('roles');
+        }
+
+        $universitasRoles = $this->roles->pluck('name')->toArray();
+        if (in_array('Rektor', $universitasRoles) || in_array('Wakil Rektor', $universitasRoles)) {
+            return true;
+        }
+
+        // Check for fakultas/prodi level roles (Dekan, Wakil Dekan, Kajur)
+        if ($this->unit_id) {
+            if ($this->isDekan() || $this->isWakilDekan() || $this->isKajur()) {
+                return true;
+            }
+        }
+
+        // Also check unitRoles for any pimpinan role
+        if (! $this->relationLoaded('unitRoles')) {
+            $this->load('unitRoles');
+        }
+
+        $pimpinanRoleNames = ['Rektor', 'Wakil Rektor', 'Dekan', 'Wakil Dekan', 'Kajur'];
+        $userUnitRoleNames = $this->unitRoles->pluck('name')->toArray();
+
+        return ! empty(array_intersect($pimpinanRoleNames, $userUnitRoleNames));
+    }
+
+    /**
+     * Get pimpinan level (universitas, fakultas, or prodi).
+     */
+    public function getPimpinanLevel(): ?string
+    {
+        if ($this->isRektor() || $this->isWakilRektor()) {
+            return 'universitas';
+        }
+
+        if ($this->isDekan() || $this->isWakilDekan()) {
+            return 'fakultas';
+        }
+
+        if ($this->isKajur()) {
+            return 'prodi';
+        }
+
+        return null;
+    }
+
+    /**
      * Get programs accessible by coordinator.
      * Programs are accessible if they belong to the user's unit (via fakultas field).
      */

@@ -2,6 +2,8 @@ import { usePage } from '@inertiajs/react';
 import { ReactNode } from 'react';
 import Sidebar from './Sidebar';
 import CoordinatorSidebar from './CoordinatorSidebar';
+import AssessorInternalSidebar from './AssessorInternalSidebar';
+import PimpinanSidebar from './PimpinanSidebar';
 
 interface DashboardLayoutProps {
     children: ReactNode;
@@ -16,16 +18,33 @@ export default function DashboardLayout({ children, title, subtitle }: Dashboard
             role?: string;
             isAdmin?: boolean;
             isCoordinator?: boolean;
+            isAssessorInternal?: boolean;
+            isPimpinan?: boolean;
         } | null;
     };
 
     // Determine which sidebar to use
     const isCoordinator = auth?.isCoordinator ?? false;
+    const isAssessorInternal = auth?.isAssessorInternal ?? false;
+    const isPimpinan = auth?.isPimpinan ?? false;
     const userRole = auth?.role ?? '';
+
+    const renderSidebar = () => {
+        if (isPimpinan) {
+            return <PimpinanSidebar />;
+        }
+        if (isCoordinator) {
+            return <CoordinatorSidebar />;
+        }
+        if (isAssessorInternal) {
+            return <AssessorInternalSidebar />;
+        }
+        return <Sidebar />;
+    };
 
     return (
         <div className="flex h-screen bg-gray-50 overflow-hidden">
-            {isCoordinator ? <CoordinatorSidebar /> : <Sidebar />}
+            {renderSidebar()}
 
             {/* Main Content */}
             <div className="flex-1 flex flex-col overflow-hidden min-w-0">

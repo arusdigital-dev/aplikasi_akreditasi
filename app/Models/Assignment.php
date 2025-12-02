@@ -6,7 +6,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class Assignment extends Model
 {
@@ -29,6 +28,8 @@ class Assignment extends Model
         'unassigned_at',
         'unassigned_by',
         'assignment_type',
+        'locked_at',
+        'locked_by',
     ];
 
     /**
@@ -44,6 +45,7 @@ class Assignment extends Model
             'status' => AssignmentStatus::class,
             'access_level' => AssessorAccessLevel::class,
             'unassigned_at' => 'datetime',
+            'locked_at' => 'datetime',
         ];
     }
 
@@ -61,6 +63,14 @@ class Assignment extends Model
     public function evaluations(): HasMany
     {
         return $this->hasMany(Evaluation::class, 'assignment_id');
+    }
+
+    /**
+     * Get the evaluation notes for this assignment.
+     */
+    public function evaluationNotes(): HasMany
+    {
+        return $this->hasMany(\App\Models\EvaluationNote::class, 'assignment_id');
     }
 
     /**
@@ -88,10 +98,26 @@ class Assignment extends Model
     }
 
     /**
+     * Get the user who locked this assignment.
+     */
+    public function lockedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'locked_by');
+    }
+
+    /**
      * Check if assignment is active.
      */
     public function isActive(): bool
     {
         return $this->status !== AssignmentStatus::Cancelled && $this->unassigned_at === null;
+    }
+
+    /**
+     * Check if assignment is locked.
+     */
+    public function isLocked(): bool
+    {
+        return $this->locked_at !== null;
     }
 }

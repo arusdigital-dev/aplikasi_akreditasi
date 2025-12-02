@@ -13,17 +13,14 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
-        // Comment out test user creation if users table uses UUID
-        // User::factory()->create([
-        //     'name' => 'Test User',
-        //     'email' => 'test@example.com',
-        // ]);
+        
 
         $this->call([
+            FakultasProdiSeeder::class,
             AdminLPMPPSeeder::class,
             CoordinatorProdiSeeder::class,
+            AssessorInternalSeeder::class,
+            PimpinanUniversitasSeeder::class,
         ]);
     }
 }
