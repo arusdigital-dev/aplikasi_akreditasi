@@ -14,7 +14,7 @@ interface Document {
     validated_by: { name: string } | null;
     rejected_at: string | null;
     rejection_notes: string | null;
-    uploaded_at: string;
+    created_at: string;
     metadata: Record<string, any>;
 }
 
@@ -224,7 +224,13 @@ export default function DocumentsIndex({ documents, categories, years, stats, fi
                                             <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(document)}</td>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="text-sm text-gray-500">
-                                                    {new Date(document.uploaded_at).toLocaleDateString('id-ID')}
+                                                    {document.created_at 
+                                                        ? new Date(document.created_at).toLocaleDateString('id-ID', {
+                                                            year: 'numeric',
+                                                            month: 'long',
+                                                            day: 'numeric'
+                                                        })
+                                                        : '-'}
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">

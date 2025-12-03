@@ -22,8 +22,39 @@ class StoreDocumentRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'file' => ['required', 'file', 'mimes:pdf,doc,docx', 'max:10240'],
-            'program_id' => ['required', 'string', 'exists:programs,id'],
+            'file' => [
+                'required',
+                'file',
+                'max:10240',
+                function ($attribute, $value, $fail) {
+                    if (! $value) {
+                        return;
+                    }
+
+                    $allowedMimes = [
+                        'application/pdf',
+                        'application/x-pdf',
+                        'application/acrobat',
+                        'applications/vnd.pdf',
+                        'text/pdf',
+                        'text/x-pdf',
+                        'application/msword',
+                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    ];
+                    $allowedExtensions = ['pdf', 'doc', 'docx'];
+
+                    $mimeType = $value->getMimeType();
+                    $extension = strtolower($value->getClientOriginalExtension());
+
+                    // Check both MIME type and extension
+                    $isValidMime = in_array($mimeType, $allowedMimes);
+                    $isValidExtension = in_array($extension, $allowedExtensions);
+
+                    if (! $isValidMime && ! $isValidExtension) {
+                        $fail('File harus berformat PDF, DOC, atau DOCX.');
+                    }
+                },
+            ],
             'category' => ['required', 'string', 'max:255'],
             'year' => ['required', 'integer', 'min:2020', 'max:2030'],
             'metadata' => ['nullable', 'array'],
@@ -48,8 +79,6 @@ class StoreDocumentRequest extends FormRequest
             'file.file' => 'File yang diupload tidak valid.',
             'file.mimes' => 'File harus berformat PDF, DOC, atau DOCX.',
             'file.max' => 'Ukuran file maksimal 10MB.',
-            'program_id.required' => 'Program studi harus dipilih.',
-            'program_id.exists' => 'Program studi yang dipilih tidak ditemukan.',
             'category.required' => 'Kategori dokumen harus diisi.',
             'category.max' => 'Kategori dokumen maksimal 255 karakter.',
             'year.required' => 'Tahun dokumen harus diisi.',

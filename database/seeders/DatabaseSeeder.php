@@ -16,7 +16,9 @@ class DatabaseSeeder extends Seeder
         
 
         $this->call([
-            FakultasProdiSeeder::class,
+            FakultasSeeder::class,
+            ProdiSeeder::class,
+            FakultasProdiSeeder::class, // Keep for backward compatibility with Unit model
             AdminLPMPPSeeder::class,
             CoordinatorProdiSeeder::class,
             AssessorInternalSeeder::class,

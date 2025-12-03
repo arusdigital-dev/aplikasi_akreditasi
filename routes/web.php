@@ -2,12 +2,7 @@
 
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Dashboard\AdminLPMPPController;
-use App\Http\Controllers\Dashboard\AssessorAssignmentController;
 use App\Http\Controllers\Dashboard\CoordinatorProdiController;
-use App\Http\Controllers\Dashboard\DocumentIssueController;
-use App\Http\Controllers\Dashboard\EmployeeController;
-use App\Http\Controllers\Dashboard\ReportController;
-use App\Http\Controllers\Dashboard\StatisticsController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -30,37 +25,49 @@ Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
     // Admin LPMPP routes - Only accessible by Admin LPMPP
-    Route::middleware('admin.lpmpp')->group(function () {
-        // Dashboard routes
-        Route::prefix('dashboard')->name('dashboard.')->group(function () {
-            Route::get('/', [AdminLPMPPController::class, 'index'])->name('index');
-        });
+    Route::middleware('admin.lpmpp')->prefix('admin-lpmpp')->name('admin-lpmpp.')->group(function () {
+        // Dashboard
+        Route::get('/', [AdminLPMPPController::class, 'index'])->name('index');
 
-        // Assessor Assignment routes
-        Route::resource('assessor-assignments', AssessorAssignmentController::class);
+        // Progress Summary
+        Route::get('/progress-summary', [AdminLPMPPController::class, 'progressSummary'])->name('progress-summary');
 
-        // Statistics routes
-        Route::get('/statistics', [StatisticsController::class, 'index'])->name('statistics.index');
+        // Assignments
+        Route::get('/assignments', [AdminLPMPPController::class, 'assignments'])->name('assignments.index');
+        Route::get('/assignments/create', [AdminLPMPPController::class, 'createAssignment'])->name('assignments.create');
+        Route::post('/assignments', [AdminLPMPPController::class, 'storeAssignment'])->name('assignments.store');
+        Route::get('/assignments/{id}/edit', [AdminLPMPPController::class, 'editAssignment'])->name('assignments.edit');
+        Route::put('/assignments/{id}', [AdminLPMPPController::class, 'updateAssignment'])->name('assignments.update');
+        Route::post('/assignments/{id}/assign', [AdminLPMPPController::class, 'assignAssessor'])->name('assignments.assign');
+        Route::post('/assignments/{id}/unassign', [AdminLPMPPController::class, 'unassignAssessor'])->name('assignments.unassign');
 
-        // Employee routes
-        Route::resource('employees', EmployeeController::class);
-        Route::post('/employees/import', [EmployeeController::class, 'import'])->name('employees.import');
+        // Statistics
+        Route::get('/statistics', [AdminLPMPPController::class, 'statistics'])->name('statistics.index');
 
-        // Report routes
-        Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
-        Route::post('/reports/document-completeness/preview', [ReportController::class, 'previewDocumentCompleteness'])->name('reports.document-completeness.preview');
-        Route::post('/reports/document-completeness', [ReportController::class, 'generateDocumentCompleteness'])->name('reports.document-completeness');
-        Route::post('/reports/assessor-evaluation', [ReportController::class, 'generateAssessorEvaluation'])->name('reports.assessor-evaluation');
-        Route::post('/reports/executive', [ReportController::class, 'generateExecutive'])->name('reports.executive');
+        // Employees
+        Route::get('/employees', [AdminLPMPPController::class, 'employees'])->name('employees.index');
+        Route::get('/employees/create', [AdminLPMPPController::class, 'createEmployee'])->name('employees.create');
+        Route::post('/employees', [AdminLPMPPController::class, 'storeEmployee'])->name('employees.store');
+        Route::post('/employees/sync', [AdminLPMPPController::class, 'syncEmployees'])->name('employees.sync');
+        Route::get('/employees/{id}', [AdminLPMPPController::class, 'showEmployee'])->name('employees.show');
+        Route::get('/employees/{id}/edit', [AdminLPMPPController::class, 'editEmployee'])->name('employees.edit');
+        Route::put('/employees/{id}', [AdminLPMPPController::class, 'updateEmployee'])->name('employees.update');
 
-        // Document Issues routes
-        Route::get('/documents/issues', [DocumentIssueController::class, 'index'])->name('documents.issues.index');
-        Route::get('/documents/issues/{id}', [DocumentIssueController::class, 'show'])->name('documents.issues.show');
-        Route::post('/documents/issues/{id}/notify', [DocumentIssueController::class, 'sendNotification'])->name('documents.issues.notify');
-        Route::put('/documents/issues/{id}/metadata', [DocumentIssueController::class, 'updateMetadata'])->name('documents.issues.update-metadata');
-        Route::get('/documents/issues/{id}/download', [DocumentIssueController::class, 'download'])->name('documents.issues.download');
-        Route::post('/documents/issues/{id}/resolve', [DocumentIssueController::class, 'resolve'])->name('documents.issues.resolve');
-        Route::post('/documents/issues/{id}/reject', [DocumentIssueController::class, 'reject'])->name('documents.issues.reject');
+        // Reports
+        Route::get('/reports', [AdminLPMPPController::class, 'reports'])->name('reports.index');
+        Route::post('/reports/generate', [AdminLPMPPController::class, 'generateReport'])->name('reports.generate');
+        Route::get('/reports/preview', [AdminLPMPPController::class, 'previewReport'])->name('reports.preview');
+
+        // Notifications
+        Route::get('/notifications', [AdminLPMPPController::class, 'notifications'])->name('notifications.index');
+        Route::post('/notifications/send-reminder', [AdminLPMPPController::class, 'sendReminder'])->name('notifications.send-reminder');
+        Route::post('/notifications/send-broadcast', [AdminLPMPPController::class, 'sendBroadcast'])->name('notifications.send-broadcast');
+
+        // Problem Documents
+        Route::get('/problem-documents', [AdminLPMPPController::class, 'problemDocuments'])->name('problem-documents.index');
+
+        // Download Report
+        Route::get('/reports/{report}/download', [AdminLPMPPController::class, 'downloadReport'])->name('reports.download');
     });
 
     // Notification routes - Accessible by all authenticated users
@@ -87,6 +94,9 @@ Route::middleware('auth')->group(function () {
         Route::get('/assignments/{assignmentId}/evaluate', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'showAssignmentEvaluation'])->name('assignments.evaluate');
         Route::post('/assignments/{assignmentId}/evaluations', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'storeAssignmentEvaluation'])->name('assignments.evaluations.store');
         Route::match(['put', 'patch'], '/assignments/{assignmentId}/evaluations', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'updateAssignmentEvaluation'])->name('assignments.evaluations.update');
+
+        // Document download
+        Route::get('/documents/{id}/download', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'downloadDocument'])->name('documents.download');
 
         // Statistics
         Route::get('/statistics/per-program', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'statisticsPerProgram'])->name('statistics.per-program');
@@ -134,8 +144,13 @@ Route::middleware('auth')->group(function () {
         // Simulation
         Route::get('/simulation', [CoordinatorProdiController::class, 'simulation'])->name('simulation');
 
-        // Criteria points
-        Route::get('/criteria-points', [CoordinatorProdiController::class, 'criteriaPoints'])->name('criteria-points');
+        // Criteria Points
+        Route::get('/criteria-points', [CoordinatorProdiController::class, 'criteriaPoints'])->name('criteria-points.index');
+        Route::get('/criteria-points/create', [CoordinatorProdiController::class, 'createCriteriaPoint'])->name('criteria-points.create');
+        Route::post('/criteria-points', [CoordinatorProdiController::class, 'storeCriteriaPoint'])->name('criteria-points.store');
+        Route::get('/criteria-points/{id}/edit', [CoordinatorProdiController::class, 'editCriteriaPoint'])->name('criteria-points.edit');
+        Route::put('/criteria-points/{id}', [CoordinatorProdiController::class, 'updateCriteriaPoint'])->name('criteria-points.update');
+        Route::delete('/criteria-points/{id}', [CoordinatorProdiController::class, 'destroyCriteriaPoint'])->name('criteria-points.destroy');
 
         // Standards
         Route::get('/standards', [CoordinatorProdiController::class, 'standards'])->name('standards');

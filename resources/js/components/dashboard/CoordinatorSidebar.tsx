@@ -10,6 +10,12 @@ export default function CoordinatorSidebar() {
         if (href === '/coordinator-prodi') {
             return currentUrl === '/coordinator-prodi';
         }
+        // For documents, be more specific to avoid matching both index and create
+        if (href === '/coordinator-prodi/documents') {
+            return currentUrl === '/coordinator-prodi/documents' || 
+                   (currentUrl.startsWith('/coordinator-prodi/documents/') && 
+                    !currentUrl.startsWith('/coordinator-prodi/documents/create'));
+        }
         return currentUrl.startsWith(href);
     };
 
@@ -52,9 +58,9 @@ export default function CoordinatorSidebar() {
                     </div>
                     <Link
                         href={route('coordinator-prodi.documents.index')}
-                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
-                            isActive('/coordinator-prodi/documents')
-                                ? 'text-white bg-blue-600 font-medium'
+                        className={`flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
+                            isActive('/coordinator-prodi/documents') && !isActive('/coordinator-prodi/documents/create')
+                                ? 'text-white bg-blue-600'
                                 : 'text-gray-700 hover:bg-gray-100'
                         }`}
                     >
@@ -65,9 +71,9 @@ export default function CoordinatorSidebar() {
                     </Link>
                     <Link
                         href={route('coordinator-prodi.documents.create')}
-                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
+                        className={`flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
                             isActive('/coordinator-prodi/documents/create')
-                                ? 'text-white bg-blue-600 font-medium'
+                                ? 'text-white bg-blue-600'
                                 : 'text-gray-700 hover:bg-gray-100'
                         }`}
                     >
@@ -141,7 +147,7 @@ export default function CoordinatorSidebar() {
                         Referensi
                     </div>
                     <Link
-                        href={`${route('coordinator-prodi.criteria-points')}?program_id=`}
+                        href="/coordinator-prodi/criteria-points"
                         className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
                             isActive('/coordinator-prodi/criteria-points')
                                 ? 'text-white bg-blue-600 font-medium'
@@ -149,7 +155,7 @@ export default function CoordinatorSidebar() {
                         }`}
                     >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                         </svg>
                         Poin Kriteria
                     </Link>

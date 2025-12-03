@@ -37,6 +37,7 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'unit_id',
+        'prodi_id',
         'employee_id',
         'is_active',
         'name',
@@ -90,6 +91,14 @@ class User extends Authenticatable
     public function unit(): BelongsTo
     {
         return $this->belongsTo(Unit::class, 'unit_id');
+    }
+
+    /**
+     * Get the prodi that the user belongs to.
+     */
+    public function prodi(): BelongsTo
+    {
+        return $this->belongsTo(Prodi::class, 'prodi_id');
     }
 
     /**
@@ -326,34 +335,37 @@ class User extends Authenticatable
 
     /**
      * Get programs accessible by coordinator.
-     * Programs are accessible if they belong to the user's unit (via fakultas field).
+     * Programs are accessible if they belong to the user's prodi (via fakultas field).
      */
     public function accessiblePrograms()
     {
-        if (! $this->unit_id) {
+        if (! $this->prodi_id) {
             return Program::query()->whereRaw('1 = 0'); // Empty result
         }
 
-        $unit = $this->unit;
+        // Load prodi relationship if not loaded
+        if (! $this->relationLoaded('prodi')) {
+            $this->load('prodi');
+        }
 
-        if (! $unit) {
+        $prodi = $this->prodi;
+
+        if (! $prodi) {
             return Program::query()->whereRaw('1 = 0'); // Empty result
         }
 
-        // If unit is Fakultas, get programs with matching fakultas name
-        if ($unit->type->value === 'Fakultas') {
-            return Program::where('fakultas', $unit->name);
+        // Load fakultas relationship if not loaded
+        if (! $prodi->relationLoaded('fakultas')) {
+            $prodi->load('fakultas');
         }
 
-        // If unit is Prodi, get programs with matching name or fakultas
-        $parentUnit = $unit->parent;
-        if ($parentUnit && $parentUnit->type->value === 'Fakultas') {
-            return Program::where('fakultas', $parentUnit->name)
-                ->orWhere('name', $unit->name);
+        // Get programs with matching fakultas name from prodi's fakultas
+        $fakultas = $prodi->fakultas;
+        if ($fakultas) {
+            return Program::where('fakultas', $fakultas->name);
         }
 
-        // Fallback: get programs with matching unit name
-        return Program::where('fakultas', $unit->name)
-            ->orWhere('name', $unit->name);
+        // Fallback: return empty if no fakultas
+        return Program::query()->whereRaw('1 = 0');
     }
 }

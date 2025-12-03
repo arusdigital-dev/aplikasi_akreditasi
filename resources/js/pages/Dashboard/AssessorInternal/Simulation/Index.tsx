@@ -279,8 +279,12 @@ export default function SimulationIndex({ simulations, programs, units, filters 
                                                         <tr key={criterion.criterion_id} className={criterion.score < 2.5 ? 'bg-red-50' : ''}>
                                                             <td className="px-4 py-3 text-sm text-gray-900">{criterion.criterion_name}</td>
                                                             <td className="px-4 py-3 text-sm font-medium text-gray-900">{criterion.score.toFixed(2)}</td>
-                                                            <td className="px-4 py-3 text-sm text-gray-600">{criterion.weight.toFixed(2)}</td>
-                                                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{criterion.weighted_score.toFixed(2)}</td>
+                                                            <td className="px-4 py-3 text-sm text-gray-600">
+                                                                {typeof criterion.weight === 'number' ? criterion.weight.toFixed(2) : criterion.weight || '0.00'}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                                                                {typeof criterion.weighted_score === 'number' ? criterion.weighted_score.toFixed(2) : criterion.weighted_score || '0.00'}
+                                                            </td>
                                                             <td className="px-4 py-3 text-sm">
                                                                 {criterion.status ? (
                                                                     <span className={`px-2 py-1 text-xs rounded ${

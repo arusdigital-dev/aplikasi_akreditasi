@@ -8,8 +8,8 @@ interface Document {
     category: string;
     year: number;
     criterion: string;
-    unit: string;
-    program: string;
+    fakultas: string;
+    prodi: string;
 }
 
 interface EvaluationNote {
@@ -141,12 +141,12 @@ export default function EvaluationDocumentsHistory({ document, evaluationNote, h
                             <p className="text-sm font-medium text-gray-900">{document.criterion}</p>
                         </div>
                         <div>
-                            <p className="text-sm text-gray-600">Prodi/Fakultas</p>
-                            <p className="text-sm font-medium text-gray-900">{document.unit}</p>
+                            <p className="text-sm text-gray-600">Fakultas</p>
+                            <p className="text-sm font-medium text-gray-900">{document.fakultas}</p>
                         </div>
                         <div>
-                            <p className="text-sm text-gray-600">Program</p>
-                            <p className="text-sm font-medium text-gray-900">{document.program}</p>
+                            <p className="text-sm text-gray-600">Program Studi</p>
+                            <p className="text-sm font-medium text-gray-900">{document.prodi}</p>
                         </div>
                     </div>
                 </div>

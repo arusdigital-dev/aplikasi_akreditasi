@@ -53,7 +53,7 @@ class AuthController extends Controller
     {
         // Check if user is Admin LPMPP
         if ($user->isAdminLPMPP()) {
-            return route('dashboard.index');
+            return route('admin-lpmpp.index');
         }
 
         // Check if user is Koordinator Prodi

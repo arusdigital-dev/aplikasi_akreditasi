@@ -22,6 +22,7 @@ class Document extends Model
         'assignment_id',
         'program_id',
         'unit_id',
+        'prodi_id',
         'file_path',
         'file_name',
         'file_type',
@@ -77,6 +78,14 @@ class Document extends Model
     public function unit(): BelongsTo
     {
         return $this->belongsTo(Unit::class, 'unit_id');
+    }
+
+    /**
+     * Get the prodi for this document.
+     */
+    public function prodi(): BelongsTo
+    {
+        return $this->belongsTo(Prodi::class, 'prodi_id');
     }
 
     /**

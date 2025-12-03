@@ -2,19 +2,19 @@ import { Head, useForm } from '@inertiajs/react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import { route } from '@/lib/route';
 
-interface Program {
+interface Prodi {
     id: string;
     name: string;
+    fakultas_name: string;
 }
 
 interface Props {
-    programs: Program[];
+    prodi: Prodi | null;
 }
 
-export default function DocumentsCreate({ programs }: Props) {
+export default function DocumentsCreate({ prodi }: Props) {
     const { data, setData, post, processing, errors, reset } = useForm({
         file: null as File | null,
-        program_id: '',
         category: '',
         year: new Date().getFullYear(),
         metadata: {
@@ -28,6 +28,26 @@ export default function DocumentsCreate({ programs }: Props) {
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        
+        // Validate file before submit
+        if (!data.file) {
+            alert('File dokumen harus dipilih.');
+            return;
+        }
+
+        const fileExtension = data.file.name.split('.').pop()?.toLowerCase();
+        const allowedExtensions = ['pdf', 'doc', 'docx'];
+        
+        if (!fileExtension || !allowedExtensions.includes(fileExtension)) {
+            alert('File harus berformat PDF, DOC, atau DOCX.');
+            return;
+        }
+
+        if (data.file.size > 10 * 1024 * 1024) {
+            alert('Ukuran file maksimal 10MB.');
+            return;
+        }
+
         post(route('coordinator-prodi.documents.store'), {
             forceFormData: true,
             onSuccess: () => {
@@ -61,25 +81,23 @@ export default function DocumentsCreate({ programs }: Props) {
                         <p className="mt-1 text-xs text-gray-500">Format: PDF, DOC, DOCX. Maksimal 10MB</p>
                     </div>
 
-                    {/* Program */}
+                    {/* Program Studi */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                             Program Studi <span className="text-red-500">*</span>
                         </label>
-                        <select
-                            value={data.program_id}
-                            onChange={(e) => setData('program_id', e.target.value)}
-                            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                            required
-                        >
-                            <option value="">Pilih Program Studi</option>
-                            {programs.map((program) => (
-                                <option key={program.id} value={program.id}>
-                                    {program.name}
-                                </option>
-                            ))}
-                        </select>
-                        {errors.program_id && <p className="mt-1 text-sm text-red-600">{errors.program_id}</p>}
+                        {prodi ? (
+                            <div className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50">
+                                <div className="font-medium text-gray-900">{prodi.name}</div>
+                                <div className="text-xs text-gray-500 mt-1">Fakultas: {prodi.fakultas_name}</div>
+                            </div>
+                        ) : (
+                            <div className="w-full border border-red-300 rounded-md px-3 py-2 text-sm bg-red-50">
+                                <p className="text-red-600 text-sm">
+                                    Anda belum terhubung dengan Program Studi. Silakan hubungi Admin untuk mengatur Program Studi Anda.
+                                </p>
+                            </div>
+                        )}
                     </div>
 
                     {/* Category */}

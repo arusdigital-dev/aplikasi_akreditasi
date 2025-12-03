@@ -1,205 +1,211 @@
-import { Head, router } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
-import { route } from '@/lib/route';
 import { useState } from 'react';
 
-interface Program {
-    id: string;
-    name: string;
-}
-
 interface CriteriaPoint {
-    id: string;
+    id: number;
     title: string;
-    description: string;
+    description: string | null;
     max_score: number;
+    criterion: {
+        name: string;
+        standard: {
+            name: string;
+            program: {
+                name: string;
+            } | null;
+        } | null;
+    } | null;
 }
 
-interface Criteria {
-    id: string;
+interface Criterion {
+    id: number;
     name: string;
-    description: string;
-    weight: number;
-    order_index: number;
-    criteria_points: CriteriaPoint[];
-}
-
-interface Standard {
-    id: string;
-    name: string;
-    description: string;
-    weight: number;
-    order_index: number;
-    criteria: Criteria[];
+    standard: string;
+    program: string;
 }
 
 interface Props {
-    standards: Standard[];
-    totalWeight: number;
-    program: Program | null;
-    programs?: Program[];
+    criteriaPoints: {
+        data: CriteriaPoint[];
+        links: any[];
+        meta: any;
+    };
+    criteria: Criterion[];
     filters: {
-        standard_id?: string;
         criteria_id?: string;
+        search?: string;
     };
 }
 
-export default function CriteriaPointsIndex({ standards, totalWeight, program, programs = [], filters }: Props) {
-    const [selectedStandard, setSelectedStandard] = useState(filters.standard_id || '');
-    const [selectedProgram, setSelectedProgram] = useState(program?.id || '');
+export default function CriteriaPointsIndex({ criteriaPoints, criteria, filters }: Props) {
+    const [search, setSearch] = useState(filters.search || '');
+    const [criteriaId, setCriteriaId] = useState(filters.criteria_id || '');
 
     const handleFilter = () => {
-        if (!selectedProgram && programs.length > 0) {
-            setSelectedProgram(programs[0].id);
-        }
-        router.get(route('coordinator-prodi.criteria-points'), {
-            program_id: selectedProgram || program?.id || programs[0]?.id,
-            standard_id: selectedStandard || undefined,
+        router.get('/coordinator-prodi/criteria-points', {
+            search: search || undefined,
+            criteria_id: criteriaId || undefined,
+        }, {
+            preserveState: true,
+            preserveScroll: true,
         });
     };
 
-    if (!program && programs.length === 0) {
-        return (
-            <DashboardLayout title="Poin Kriteria" subtitle="Lihat bobot dan standar poin kriteria akreditasi">
-                <Head title="Poin Kriteria" />
-                <div className="bg-white rounded-lg shadow p-12 text-center">
-                    <p className="text-gray-500">Tidak ada program studi yang dapat diakses</p>
-                </div>
-            </DashboardLayout>
-        );
-    }
-
-    const currentProgram = program || (programs.length > 0 ? programs[0] : null);
-
-    const filteredStandards = selectedStandard
-        ? standards.filter((std) => std.id === selectedStandard)
-        : standards;
-
     return (
-        <DashboardLayout title="Poin Kriteria" subtitle="Lihat bobot dan standar poin kriteria akreditasi">
+        <>
             <Head title="Poin Kriteria" />
+            <DashboardLayout title="Poin Kriteria" subtitle="Kelola poin kriteria akreditasi">
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center">
+                        <h2 className="text-lg font-semibold text-gray-900">Daftar Poin Kriteria</h2>
+                        <Link
+                            href="/coordinator-prodi/criteria-points/create"
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                        >
+                            Tambah Poin Kriteria
+                        </Link>
+                    </div>
 
-            <div className="space-y-6">
-                {/* Header */}
-                <div className="bg-white rounded-lg shadow p-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                        {programs.length > 0 && (
+                    {/* Filters */}
+                    <div className="bg-white rounded-lg shadow p-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Program Studi</label>
+                                <input
+                                    type="text"
+                                    placeholder="Cari judul atau deskripsi..."
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    className="w-full rounded-md border-gray-300 shadow-sm"
+                                />
+                            </div>
+                            <div>
                                 <select
-                                    value={selectedProgram || currentProgram?.id || ''}
-                                    onChange={(e) => {
-                                        setSelectedProgram(e.target.value);
-                                        router.get(route('coordinator-prodi.criteria-points'), {
-                                            program_id: e.target.value,
-                                        });
-                                    }}
-                                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                                    value={criteriaId}
+                                    onChange={(e) => setCriteriaId(e.target.value)}
+                                    className="w-full rounded-md border-gray-300 shadow-sm"
                                 >
-                                    {programs.map((p) => (
-                                        <option key={p.id} value={p.id}>
-                                            {p.name}
+                                    <option value="">Semua Kriteria</option>
+                                    {criteria.map((criterion) => (
+                                        <option key={criterion.id} value={criterion.id}>
+                                            {criterion.name} ({criterion.program})
                                         </option>
                                     ))}
                                 </select>
                             </div>
-                        )}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Filter Standard</label>
-                            <select
-                                value={selectedStandard}
-                                onChange={(e) => setSelectedStandard(e.target.value)}
-                                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                            >
-                                <option value="">Semua Standard</option>
-                                {standards.map((standard) => (
-                                    <option key={standard.id} value={standard.id}>
-                                        {standard.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="flex items-end">
-                            <button
-                                onClick={handleFilter}
-                                className="w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-medium"
-                            >
-                                Filter
-                            </button>
+                            <div className="flex items-end">
+                                <button
+                                    onClick={handleFilter}
+                                    className="w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+                                >
+                                    Filter
+                                </button>
+                            </div>
                         </div>
                     </div>
-                    {currentProgram && (
-                        <div>
-                            <h2 className="text-xl font-semibold text-gray-900">{currentProgram.name}</h2>
-                            <p className="text-sm text-gray-500 mt-1">Total Bobot: {totalWeight}</p>
-                        </div>
-                    )}
-                </div>
 
-                {/* Standards */}
-                <div className="space-y-4">
-                    {filteredStandards.map((standard) => (
-                        <div key={standard.id} className="bg-white rounded-lg shadow p-6">
-                            <div className="mb-4">
-                                <h3 className="text-lg font-semibold text-gray-900">{standard.name}</h3>
-                                {standard.description && (
-                                    <p className="text-sm text-gray-600 mt-1">{standard.description}</p>
-                                )}
-                                <div className="mt-2 flex items-center gap-4 text-sm text-gray-500">
-                                    <span>Bobot: {standard.weight}</span>
-                                    <span>Kriteria: {standard.criteria.length}</span>
+                    {/* Table */}
+                    <div className="bg-white rounded-lg shadow overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-50">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Program
+                                        </th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Standar
+                                        </th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Kriteria
+                                        </th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Judul Poin
+                                        </th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Deskripsi
+                                        </th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Nilai Maksimal
+                                        </th>
+                                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Aksi
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                    {criteriaPoints.data.length > 0 ? (
+                                        criteriaPoints.data.map((point) => (
+                                            <tr key={point.id} className="hover:bg-gray-50">
+                                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                                    {point.criterion?.standard?.program?.name ?? 'N/A'}
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                                    {point.criterion?.standard?.name ?? 'N/A'}
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                                    {point.criterion?.name ?? 'N/A'}
+                                                </td>
+                                                <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                                                    {point.title}
+                                                </td>
+                                                <td className="px-4 py-3 text-sm text-gray-500">
+                                                    {point.description ? (
+                                                        <span className="truncate max-w-xs block" title={point.description}>
+                                                            {point.description}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-gray-400">-</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                                    {point.max_score}
+                                                </td>
+                                                <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
+                                                    <Link
+                                                        href={`/coordinator-prodi/criteria-points/${point.id}/edit`}
+                                                        className="text-blue-600 hover:text-blue-900 mr-4"
+                                                    >
+                                                        Edit
+                                                    </Link>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr>
+                                            <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">
+                                                Tidak ada poin kriteria
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                        {/* Pagination */}
+                        {criteriaPoints.links && criteriaPoints.links.length > 3 && (
+                            <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
+                                <div className="text-sm text-gray-700">
+                                    Menampilkan {criteriaPoints.meta.from} sampai {criteriaPoints.meta.to} dari {criteriaPoints.meta.total} poin kriteria
+                                </div>
+                                <div className="flex gap-2">
+                                    {criteriaPoints.links.map((link: any, index: number) => (
+                                        <Link
+                                            key={index}
+                                            href={link.url || '#'}
+                                            className={`px-3 py-1 rounded-md text-sm ${
+                                                link.active
+                                                    ? 'bg-blue-600 text-white'
+                                                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                                            } ${!link.url ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                            dangerouslySetInnerHTML={{ __html: link.label }}
+                                        />
+                                    ))}
                                 </div>
                             </div>
-
-                            {/* Criteria */}
-                            <div className="space-y-4">
-                                {standard.criteria.map((criterion) => (
-                                    <div key={criterion.id} className="border-l-4 border-blue-500 pl-4 py-3 bg-gray-50 rounded-r-lg">
-                                        <div className="mb-2">
-                                            <h4 className="font-semibold text-gray-900">{criterion.name}</h4>
-                                            {criterion.description && (
-                                                <p className="text-sm text-gray-600 mt-1">{criterion.description}</p>
-                                            )}
-                                            <div className="mt-2 text-xs text-gray-500">
-                                                Bobot: {criterion.weight}
-                                            </div>
-                                        </div>
-
-                                        {/* Criteria Points */}
-                                        {criterion.criteria_points.length > 0 ? (
-                                            <div className="mt-3 space-y-2">
-                                                {criterion.criteria_points.map((point) => (
-                                                    <div
-                                                        key={point.id}
-                                                        className="bg-white border border-gray-200 rounded-lg p-3"
-                                                    >
-                                                        <div className="flex items-start justify-between">
-                                                            <div className="flex-1">
-                                                                <p className="font-medium text-gray-900">{point.title}</p>
-                                                                {point.description && (
-                                                                    <p className="text-sm text-gray-600 mt-1">{point.description}</p>
-                                                                )}
-                                                            </div>
-                                                            <div className="ml-4 text-right">
-                                                                <p className="text-sm font-semibold text-gray-900">
-                                                                    {point.max_score} poin
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <p className="text-sm text-gray-500 italic">Belum ada poin kriteria</p>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
+                        )}
+                    </div>
                 </div>
-            </div>
-        </DashboardLayout>
+            </DashboardLayout>
+        </>
     );
 }
-

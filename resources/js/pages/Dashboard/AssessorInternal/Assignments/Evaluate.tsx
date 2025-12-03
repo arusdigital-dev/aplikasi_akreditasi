@@ -1,13 +1,13 @@
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import { route } from '@/lib/route';
-import { FormEvent, useState } from 'react';
+import { FormEvent } from 'react';
 
 interface Assignment {
     id: number;
-    unit: string;
+    fakultas: string;
+    prodi: string;
     criterion: string;
-    program: string;
     deadline: string | null;
     assigned_date: string;
     is_locked: boolean;
@@ -28,23 +28,37 @@ interface CriteriaPoint {
     } | null;
 }
 
+interface Document {
+    id: string;
+    file_name: string;
+    file_path: string;
+    category: string;
+    year: number;
+    validated_at: string | null;
+    uploaded_at: string | null;
+}
+
 interface Props {
     assignment: Assignment;
     criteriaPoints: CriteriaPoint[];
+    documents: Document[];
     warnings: string[];
     allDocumentsValidated: boolean;
+    hasDocuments: boolean;
 }
 
-export default function AssignmentsEvaluate({ assignment, criteriaPoints, warnings, allDocumentsValidated }: Props) {
+export default function AssignmentsEvaluate({ assignment, criteriaPoints, documents, warnings, allDocumentsValidated, hasDocuments }: Props) {
     // Initialize form data with existing evaluations
-    const initialEvaluations = criteriaPoints.map((point) => ({
-        criteria_point_id: point.id,
-        score: point.evaluation?.score?.toString() || '',
-        notes: point.evaluation?.notes || '',
-        descriptive_narrative: point.evaluation?.descriptive_narrative || '',
-        improvement_suggestion: point.evaluation?.improvement_suggestion || '',
-        evaluation_status: point.evaluation?.evaluation_status || '',
-    }));
+    const initialEvaluations = criteriaPoints.length > 0 
+        ? criteriaPoints.map((point) => ({
+            criteria_point_id: point.id,
+            score: point.evaluation?.score?.toString() || '',
+            notes: point.evaluation?.notes || '',
+            descriptive_narrative: point.evaluation?.descriptive_narrative || '',
+            improvement_suggestion: point.evaluation?.improvement_suggestion || '',
+            evaluation_status: point.evaluation?.evaluation_status || '',
+        }))
+        : [];
 
     const { data, setData, post, put, processing, errors } = useForm({
         evaluations: initialEvaluations,
@@ -54,7 +68,7 @@ export default function AssignmentsEvaluate({ assignment, criteriaPoints, warnin
         e.preventDefault();
 
         // Validate all scores are filled
-        const emptyScores = data.evaluations.filter((eval) => !eval.score || eval.score === '');
+        const emptyScores = data.evaluations.filter((evaluation) => !evaluation.score || evaluation.score === '');
         if (emptyScores.length > 0) {
             alert('Semua poin kriteria harus diberi nilai.');
             return;
@@ -86,12 +100,14 @@ export default function AssignmentsEvaluate({ assignment, criteriaPoints, warnin
 
     const getStatusLabel = (status: string): string => {
         switch (status) {
-            case 'passed':
-                return 'Lulus kriteria';
-            case 'needs_improvement':
-                return 'Butuh perbaikan';
-            case 'inadequate':
-                return 'Tidak memadai';
+            case 'baik':
+                return 'Baik';
+            case 'cukup':
+                return 'Cukup';
+            case 'baik_sekali':
+                return 'Baik Sekali';
+            case 'unggul':
+                return 'Unggul';
             default:
                 return '';
         }
@@ -107,16 +123,16 @@ export default function AssignmentsEvaluate({ assignment, criteriaPoints, warnin
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">Informasi Penugasan</h3>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <p className="text-sm text-gray-600">Prodi</p>
-                            <p className="text-sm font-medium text-gray-900">{assignment.unit}</p>
+                            <p className="text-sm text-gray-600">Fakultas</p>
+                            <p className="text-sm font-medium text-gray-900">{assignment.fakultas}</p>
+                        </div>
+                        <div>
+                            <p className="text-sm text-gray-600">Program Studi</p>
+                            <p className="text-sm font-medium text-gray-900">{assignment.prodi}</p>
                         </div>
                         <div>
                             <p className="text-sm text-gray-600">Kriteria</p>
                             <p className="text-sm font-medium text-gray-900">{assignment.criterion}</p>
-                        </div>
-                        <div>
-                            <p className="text-sm text-gray-600">Program</p>
-                            <p className="text-sm font-medium text-gray-900">{assignment.program}</p>
                         </div>
                         <div>
                             <p className="text-sm text-gray-600">Deadline</p>
@@ -132,6 +148,42 @@ export default function AssignmentsEvaluate({ assignment, criteriaPoints, warnin
                         </div>
                     </div>
                 </div>
+
+                {/* Documents List */}
+                {documents.length > 0 && (
+                    <div className="bg-white rounded-lg shadow p-6">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Dokumen Terkait</h3>
+                        <div className="space-y-3">
+                            {documents.map((doc) => (
+                                <div key={doc.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-3">
+                                            <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                            </svg>
+                                            <div>
+                                                <p className="text-sm font-medium text-gray-900">{doc.file_name}</p>
+                                                <div className="flex items-center gap-4 mt-1">
+                                                    <span className="text-xs text-gray-500">Kategori: {doc.category}</span>
+                                                    <span className="text-xs text-gray-500">Tahun: {doc.year}</span>
+                                                    {doc.validated_at && (
+                                                        <span className="text-xs text-green-600">✓ Validated</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <a
+                                        href={route('assessor-internal.documents.download', { id: doc.id })}
+                                        className="px-3 py-2 text-sm font-medium text-blue-600 hover:text-blue-800 border border-blue-300 rounded-md hover:bg-blue-50"
+                                    >
+                                        Download
+                                    </a>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* Warnings */}
                 {warnings.length > 0 && (
@@ -153,28 +205,48 @@ export default function AssignmentsEvaluate({ assignment, criteriaPoints, warnin
                 )}
 
                 {/* Evaluation Form */}
-                <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow p-6 space-y-6">
-                    <div className="space-y-6">
-                        {criteriaPoints.map((point, index) => (
+                <div className="bg-white rounded-lg shadow p-6 space-y-6">
+                    {criteriaPoints.length > 0 ? (
+                        <form onSubmit={handleSubmit} className="space-y-6">
+                            <div className="mb-4">
+                                <h3 className="text-lg font-semibold text-gray-900 mb-2">Form Penilaian</h3>
+                                <p className="text-sm text-gray-600">Silakan isi form di bawah ini untuk setiap poin kriteria yang perlu dinilai.</p>
+                            </div>
+                            <div className="space-y-6">
+                            {criteriaPoints.map((point, index) => (
                             <div key={point.id} className="border border-gray-200 rounded-lg p-6">
                                 <div className="mb-4">
-                                    <h4 className="text-lg font-semibold text-gray-900">{point.title}</h4>
-                                    {point.description && (
-                                        <p className="text-sm text-gray-600 mt-1">{point.description}</p>
-                                    )}
-                                    <p className="text-xs text-gray-500 mt-1">Bobot maksimal: {point.max_score}</p>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <h4 className="text-lg font-semibold text-gray-900">{point.title}</h4>
+                                            {point.description && (
+                                                <p className="text-sm text-gray-600 mt-1">{point.description}</p>
+                                            )}
+                                            <p className="text-xs text-gray-500 mt-1">Bobot maksimal: {point.max_score}</p>
+                                        </div>
+                                        {data.evaluations[index].evaluation_status && (
+                                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                                                data.evaluations[index].evaluation_status === 'unggul' ? 'bg-purple-100 text-purple-800' :
+                                                data.evaluations[index].evaluation_status === 'baik_sekali' ? 'bg-blue-100 text-blue-800' :
+                                                data.evaluations[index].evaluation_status === 'baik' ? 'bg-green-100 text-green-800' :
+                                                'bg-yellow-100 text-yellow-800'
+                                            }`}>
+                                                {getStatusLabel(data.evaluations[index].evaluation_status)}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
 
                                 <div className="space-y-4">
                                     {/* Score */}
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Nilai (0-4) <span className="text-red-500">*</span>
+                                            Nilai (0-{point.max_score}) <span className="text-red-500">*</span>
                                         </label>
                                         <input
                                             type="number"
                                             min="0"
-                                            max="4"
+                                            max={point.max_score}
                                             step="0.01"
                                             value={data.evaluations[index].score}
                                             onChange={(e) => updateEvaluation(index, 'score', e.target.value)}
@@ -182,8 +254,8 @@ export default function AssignmentsEvaluate({ assignment, criteriaPoints, warnin
                                             required
                                             disabled={assignment.is_locked}
                                         />
-                                        {errors[`evaluations.${index}.score`] && (
-                                            <p className="mt-1 text-sm text-red-600">{errors[`evaluations.${index}.score`]}</p>
+                                        {errors[`evaluations.${index}.score` as keyof typeof errors] && (
+                                            <p className="mt-1 text-sm text-red-600">{errors[`evaluations.${index}.score` as keyof typeof errors]}</p>
                                         )}
                                     </div>
 
@@ -198,8 +270,8 @@ export default function AssignmentsEvaluate({ assignment, criteriaPoints, warnin
                                             className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
                                             disabled={assignment.is_locked}
                                         />
-                                        {errors[`evaluations.${index}.descriptive_narrative`] && (
-                                            <p className="mt-1 text-sm text-red-600">{errors[`evaluations.${index}.descriptive_narrative`]}</p>
+                                        {errors[`evaluations.${index}.descriptive_narrative` as keyof typeof errors] && (
+                                            <p className="mt-1 text-sm text-red-600">{errors[`evaluations.${index}.descriptive_narrative` as keyof typeof errors]}</p>
                                         )}
                                     </div>
 
@@ -214,8 +286,8 @@ export default function AssignmentsEvaluate({ assignment, criteriaPoints, warnin
                                             className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
                                             disabled={assignment.is_locked}
                                         />
-                                        {errors[`evaluations.${index}.improvement_suggestion`] && (
-                                            <p className="mt-1 text-sm text-red-600">{errors[`evaluations.${index}.improvement_suggestion`]}</p>
+                                        {errors[`evaluations.${index}.improvement_suggestion` as keyof typeof errors] && (
+                                            <p className="mt-1 text-sm text-red-600">{errors[`evaluations.${index}.improvement_suggestion` as keyof typeof errors]}</p>
                                         )}
                                     </div>
 
@@ -229,12 +301,25 @@ export default function AssignmentsEvaluate({ assignment, criteriaPoints, warnin
                                             disabled={assignment.is_locked}
                                         >
                                             <option value="">Pilih Status</option>
-                                            <option value="passed">Lulus kriteria</option>
-                                            <option value="needs_improvement">Butuh perbaikan</option>
-                                            <option value="inadequate">Tidak memadai</option>
+                                            <option value="baik">Baik</option>
+                                            <option value="cukup">Cukup</option>
+                                            <option value="baik_sekali">Baik Sekali</option>
+                                            <option value="unggul">Unggul</option>
                                         </select>
-                                        {errors[`evaluations.${index}.evaluation_status`] && (
-                                            <p className="mt-1 text-sm text-red-600">{errors[`evaluations.${index}.evaluation_status`]}</p>
+                                        {data.evaluations[index].evaluation_status && (
+                                            <div className="mt-2">
+                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                                    data.evaluations[index].evaluation_status === 'unggul' ? 'bg-purple-100 text-purple-800' :
+                                                    data.evaluations[index].evaluation_status === 'baik_sekali' ? 'bg-blue-100 text-blue-800' :
+                                                    data.evaluations[index].evaluation_status === 'baik' ? 'bg-green-100 text-green-800' :
+                                                    'bg-yellow-100 text-yellow-800'
+                                                }`}>
+                                                    {getStatusLabel(data.evaluations[index].evaluation_status)}
+                                                </span>
+                                            </div>
+                                        )}
+                                        {errors[`evaluations.${index}.evaluation_status` as keyof typeof errors] && (
+                                            <p className="mt-1 text-sm text-red-600">{errors[`evaluations.${index}.evaluation_status` as keyof typeof errors]}</p>
                                         )}
                                     </div>
 
@@ -249,39 +334,59 @@ export default function AssignmentsEvaluate({ assignment, criteriaPoints, warnin
                                             className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
                                             disabled={assignment.is_locked}
                                         />
-                                        {errors[`evaluations.${index}.notes`] && (
-                                            <p className="mt-1 text-sm text-red-600">{errors[`evaluations.${index}.notes`]}</p>
+                                        {errors[`evaluations.${index}.notes` as keyof typeof errors] && (
+                                            <p className="mt-1 text-sm text-red-600">{errors[`evaluations.${index}.notes` as keyof typeof errors]}</p>
                                         )}
                                     </div>
                                 </div>
                             </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
 
-                    {/* Actions */}
-                    <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
-                        <Link
-                            href={route('assessor-internal.assignments.index')}
-                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-                        >
-                            Batal
-                        </Link>
-                        {!assignment.is_locked && (
-                            <button
-                                type="submit"
-                                disabled={processing || !allDocumentsValidated}
-                                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        {/* Actions */}
+                        <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+                            <Link
+                                href={route('assessor-internal.assignments.index')}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
                             >
-                                {processing ? 'Menyimpan...' : 'Simpan Penilaian'}
-                            </button>
-                        )}
-                        {assignment.is_locked && (
-                            <div className="px-4 py-2 text-sm font-medium text-gray-500 bg-gray-100 rounded-md">
-                                Penilaian Dikunci
+                                Batal
+                            </Link>
+                            {!assignment.is_locked && (
+                                <button
+                                    type="submit"
+                                    disabled={processing}
+                                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {processing ? 'Menyimpan...' : 'Simpan Penilaian'}
+                                </button>
+                            )}
+                            {assignment.is_locked && (
+                                <div className="px-4 py-2 text-sm font-medium text-gray-500 bg-gray-100 rounded-md">
+                                    Penilaian Dikunci
+                                </div>
+                            )}
+                        </div>
+                    </form>
+                    ) : (
+                        <div className="text-center py-8">
+                            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <h3 className="mt-4 text-lg font-medium text-gray-900">Tidak Ada Poin Kriteria</h3>
+                            <p className="mt-2 text-sm text-gray-500">
+                                Kriteria ini belum memiliki poin penilaian. Silakan hubungi Admin untuk menambahkan poin kriteria.
+                            </p>
+                            <div className="mt-6">
+                                <Link
+                                    href={route('assessor-internal.assignments.index')}
+                                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                                >
+                                    Kembali ke Daftar
+                                </Link>
                             </div>
-                        )}
-                    </div>
-                </form>
+                        </div>
+                    )}
+                </div>
             </div>
         </DashboardLayout>
     );

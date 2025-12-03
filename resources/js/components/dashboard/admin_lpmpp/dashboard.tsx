@@ -1,5 +1,4 @@
-import { Head, Link } from '@inertiajs/react';
-import DashboardLayout from '@/components/dashboard/DashboardLayout';
+import { Link } from '@inertiajs/react';
 import SummaryCard from './SummaryCard';
 import ProgressChart from './ProgressChart';
 import FacultyStatus from './FacultyStatus';
@@ -96,13 +95,7 @@ export default function AdminLPMPPDashboard({
     programStatus,
 }: Props) {
     return (
-        <>
-            <Head title="Dashboard Admin LPMPP" />
-            <DashboardLayout
-                title="Dashboard"
-                subtitle="Kelola keseluruhan proses akreditasi dan monitoring kelengkapan dokumen"
-            >
-                <div className="space-y-6">
+        <div className="space-y-6">
                     {/* Action Buttons */}
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -320,8 +313,6 @@ export default function AdminLPMPPDashboard({
                             </div>
                         </div>
                     )}
-                </div>
-            </DashboardLayout>
-        </>
+        </div>
     );
 }

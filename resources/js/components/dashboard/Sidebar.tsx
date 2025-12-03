@@ -7,8 +7,8 @@ export default function Sidebar() {
     const currentUrl = page.url;
 
     const isActive = (href: string): boolean => {
-        if (href === '/dashboard') {
-            return currentUrl === '/dashboard';
+        if (href === '/admin-lpmpp') {
+            return currentUrl === '/admin-lpmpp';
         }
         return currentUrl.startsWith(href);
     };
@@ -33,9 +33,9 @@ export default function Sidebar() {
             {/* Navigation */}
             <nav className="flex-1 p-4 space-y-1 overflow-x-hidden">
                 <Link
-                    href={route('dashboard.index')}
+                    href={route('admin-lpmpp.index')}
                     className={`flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg ${
-                        isActive('/dashboard')
+                        isActive('/admin-lpmpp')
                             ? 'text-white bg-blue-600'
                             : 'text-gray-700 hover:bg-gray-100'
                     }`}
@@ -51,9 +51,22 @@ export default function Sidebar() {
                         Operations
                     </div>
                     <Link
-                        href={route('assessor-assignments.index')}
+                        href={route('admin-lpmpp.progress-summary')}
                         className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
-                            isActive(route('assessor-assignments.index'))
+                            isActive('/admin-lpmpp/progress-summary')
+                                ? 'text-white bg-blue-600 font-medium'
+                                : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                        Progress Akreditasi
+                    </Link>
+                    <Link
+                        href={route('admin-lpmpp.assignments.index')}
+                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
+                            isActive('/admin-lpmpp/assignments')
                                 ? 'text-white bg-blue-600 font-medium'
                                 : 'text-gray-700 hover:bg-gray-100'
                         }`}
@@ -64,9 +77,9 @@ export default function Sidebar() {
                         Penugasan Asesor
                     </Link>
                     <Link
-                        href={route('statistics.index')}
+                        href={route('admin-lpmpp.statistics.index')}
                         className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
-                            isActive(route('statistics.index'))
+                            isActive('/admin-lpmpp/statistics')
                                 ? 'text-white bg-blue-600 font-medium'
                                 : 'text-gray-700 hover:bg-gray-100'
                         }`}
@@ -77,9 +90,9 @@ export default function Sidebar() {
                         Rekap & Statistik
                     </Link>
                     <Link
-                        href={route('employees.index')}
+                        href={route('admin-lpmpp.employees.index')}
                         className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
-                            isActive(route('employees.index'))
+                            isActive('/admin-lpmpp/employees')
                                 ? 'text-white bg-blue-600 font-medium'
                                 : 'text-gray-700 hover:bg-gray-100'
                         }`}
@@ -90,9 +103,9 @@ export default function Sidebar() {
                         Master Data Pegawai
                     </Link>
                     <Link
-                        href={route('reports.index')}
+                        href={route('admin-lpmpp.reports.index')}
                         className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
-                            isActive(route('reports.index'))
+                            isActive('/admin-lpmpp/reports')
                                 ? 'text-white bg-blue-600 font-medium'
                                 : 'text-gray-700 hover:bg-gray-100'
                         }`}
@@ -103,9 +116,9 @@ export default function Sidebar() {
                         Cetak & Simpan Laporan
                     </Link>
                     <Link
-                        href={route('notifications.index')}
+                        href={route('admin-lpmpp.notifications.index')}
                         className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
-                            isActive(route('notifications.index'))
+                            isActive('/admin-lpmpp/notifications')
                                 ? 'text-white bg-blue-600 font-medium'
                                 : 'text-gray-700 hover:bg-gray-100'
                         }`}
@@ -122,9 +135,9 @@ export default function Sidebar() {
                         System
                     </div>
                     <Link
-                        href="/documents/issues"
+                        href={route('admin-lpmpp.problem-documents.index')}
                         className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
-                            isActive('/documents/issues')
+                            isActive('/admin-lpmpp/problem-documents')
                                 ? 'text-white bg-blue-600 font-medium'
                                 : 'text-gray-700 hover:bg-gray-100'
                         }`}

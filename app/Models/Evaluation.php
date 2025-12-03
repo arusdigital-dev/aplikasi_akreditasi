@@ -53,4 +53,12 @@ class Evaluation extends Model
     {
         return $this->belongsTo(CriteriaPoint::class, 'criteria_point_id');
     }
+
+    /**
+     * Get the assessor (user) for this evaluation.
+     */
+    public function assessor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assessor_id');
+    }
 }

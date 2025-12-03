@@ -5,9 +5,9 @@ import { useState } from 'react';
 
 interface Assignment {
     id: number;
-    unit: string;
+    fakultas: string;
+    prodi: string;
     criterion: string;
-    program: string;
     weight: number;
     status: 'not_started' | 'in_progress' | 'completed';
     deadline: string | null;
@@ -23,8 +23,7 @@ interface Props {
         links: any;
         meta: any;
     };
-    units: Array<{ id: string; name: string }>;
-    programs: Array<{ id: number; name: string }>;
+    prodis: Array<{ id: string; name: string; fakultas_name: string }>;
     stats: {
         total: number;
         not_started: number;
@@ -33,21 +32,18 @@ interface Props {
     };
     filters: {
         status?: string;
-        unit_id?: string;
-        program_id?: number;
+        prodi_id?: string;
     };
 }
 
-export default function AssignmentsIndex({ assignments, units, programs, stats, filters }: Props) {
+export default function AssignmentsIndex({ assignments, prodis, stats, filters }: Props) {
     const [status, setStatus] = useState(filters.status || '');
-    const [unitId, setUnitId] = useState(filters.unit_id || '');
-    const [programId, setProgramId] = useState(filters.program_id?.toString() || '');
+    const [prodiId, setProdiId] = useState(filters.prodi_id || '');
 
     const handleFilter = () => {
         router.get(route('assessor-internal.assignments.index'), {
             status: status || undefined,
-            unit_id: unitId || undefined,
-            program_id: programId || undefined,
+            prodi_id: prodiId || undefined,
         }, {
             preserveState: true,
             preserveScroll: true,
@@ -56,18 +52,18 @@ export default function AssignmentsIndex({ assignments, units, programs, stats, 
 
     const getStatusBadge = (assignment: Assignment) => {
         if (assignment.is_locked) {
-            return <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded">Dikunci</span>;
+            return <span className="px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-800 rounded">Dikunci</span>;
         }
 
         switch (assignment.status) {
             case 'completed':
-                return <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded">Selesai</span>;
+                return <span className="px-1.5 py-0.5 text-xs font-medium bg-green-100 text-green-800 rounded">Selesai</span>;
             case 'in_progress':
-                return <span className="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded">Sedang dinilai</span>;
+                return <span className="px-1.5 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 rounded">Sedang dinilai</span>;
             case 'not_started':
-                return <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded">Belum dinilai</span>;
+                return <span className="px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-800 rounded">Belum dinilai</span>;
             default:
-                return <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded">Unknown</span>;
+                return <span className="px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-800 rounded">Unknown</span>;
         }
     };
 
@@ -105,7 +101,7 @@ export default function AssignmentsIndex({ assignments, units, programs, stats, 
 
                 {/* Filters */}
                 <div className="bg-white rounded-lg shadow p-6">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
                             <select
@@ -120,31 +116,16 @@ export default function AssignmentsIndex({ assignments, units, programs, stats, 
                             </select>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Unit/Prodi</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Program Studi</label>
                             <select
-                                value={unitId}
-                                onChange={(e) => setUnitId(e.target.value)}
+                                value={prodiId}
+                                onChange={(e) => setProdiId(e.target.value)}
                                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
                             >
                                 <option value="">Semua</option>
-                                {units.map((unit) => (
-                                    <option key={unit.id} value={unit.id}>
-                                        {unit.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Program</label>
-                            <select
-                                value={programId}
-                                onChange={(e) => setProgramId(e.target.value)}
-                                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                            >
-                                <option value="">Semua</option>
-                                {programs.map((program) => (
-                                    <option key={program.id} value={program.id}>
-                                        {program.name}
+                                {prodis.map((prodi) => (
+                                    <option key={prodi.id} value={prodi.id}>
+                                        {prodi.name} ({prodi.fakultas_name})
                                     </option>
                                 ))}
                             </select>
@@ -162,32 +143,32 @@ export default function AssignmentsIndex({ assignments, units, programs, stats, 
 
                 {/* Assignments Table */}
                 <div className="bg-white rounded-lg shadow overflow-hidden">
-                    <div className="px-6 py-4 border-b border-gray-200">
-                        <h3 className="text-lg font-semibold text-gray-900">Daftar Penugasan Penilaian</h3>
+                    <div className="px-4 py-2 border-b border-gray-200">
+                        <h3 className="text-sm font-semibold text-gray-900">Daftar Penugasan Penilaian</h3>
                     </div>
                     <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
+                        <table className="min-w-full divide-y divide-gray-200 text-xs">
                             <thead className="bg-gray-50">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Fakultas
+                                    </th>
+                                    <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Prodi
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Kriteria
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Program
-                                    </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Bobot Poin
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Status
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Deadline
                                     </th>
-                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Aksi
                                     </th>
                                 </tr>
@@ -196,28 +177,28 @@ export default function AssignmentsIndex({ assignments, units, programs, stats, 
                                 {assignments.data.length > 0 ? (
                                     assignments.data.map((assignment) => (
                                         <tr key={assignment.id} className="hover:bg-gray-50">
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="text-sm font-medium text-gray-900">{assignment.unit}</div>
+                                            <td className="px-2 py-1.5 whitespace-nowrap">
+                                                <div className="text-xs text-gray-900">{assignment.fakultas}</div>
                                             </td>
-                                            <td className="px-6 py-4">
-                                                <div className="text-sm text-gray-900">{assignment.criterion}</div>
+                                            <td className="px-2 py-1.5 whitespace-nowrap">
+                                                <div className="text-xs font-medium text-gray-900">{assignment.prodi}</div>
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="text-sm text-gray-900">{assignment.program}</div>
+                                            <td className="px-2 py-1.5">
+                                                <div className="text-xs text-gray-900">{assignment.criterion}</div>
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="text-sm text-gray-900">{assignment.weight}</div>
+                                            <td className="px-2 py-1.5 whitespace-nowrap">
+                                                <div className="text-xs text-gray-900">{assignment.weight}</div>
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
+                                            <td className="px-2 py-1.5 whitespace-nowrap">
                                                 {getStatusBadge(assignment)}
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
+                                            <td className="px-2 py-1.5 whitespace-nowrap">
                                                 {assignment.deadline ? (
-                                                    <div className="text-sm">
+                                                    <div className="text-xs">
                                                         <div className={`${isDeadlinePassed(assignment.deadline) ? 'text-red-600 font-medium' : 'text-gray-900'}`}>
                                                             {new Date(assignment.deadline).toLocaleDateString('id-ID', {
                                                                 year: 'numeric',
-                                                                month: 'long',
+                                                                month: 'short',
                                                                 day: 'numeric',
                                                             })}
                                                         </div>
@@ -226,10 +207,10 @@ export default function AssignmentsIndex({ assignments, units, programs, stats, 
                                                         )}
                                                     </div>
                                                 ) : (
-                                                    <div className="text-sm text-gray-400">-</div>
+                                                    <div className="text-xs text-gray-400">-</div>
                                                 )}
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                            <td className="px-2 py-1.5 whitespace-nowrap text-right text-xs font-medium">
                                                 <Link
                                                     href={route('assessor-internal.assignments.evaluate', { assignmentId: assignment.id })}
                                                     className={`${
@@ -245,7 +226,7 @@ export default function AssignmentsIndex({ assignments, units, programs, stats, 
                                     ))
                                 ) : (
                                     <tr>
-                                        <td colSpan={7} className="px-6 py-4 text-center text-sm text-gray-500">
+                                        <td colSpan={7} className="px-2 py-1.5 text-center text-xs text-gray-500">
                                             Tidak ada penugasan
                                         </td>
                                     </tr>
@@ -255,8 +236,8 @@ export default function AssignmentsIndex({ assignments, units, programs, stats, 
                     </div>
                     {/* Pagination */}
                     {assignments.links && assignments.links.length > 3 && (
-                        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-                            <div className="text-sm text-gray-700">
+                        <div className="px-4 py-2 border-t border-gray-200 flex items-center justify-between">
+                            <div className="text-xs text-gray-700">
                                 Menampilkan {assignments.meta.from} sampai {assignments.meta.to} dari {assignments.meta.total} penugasan
                             </div>
                             <div className="flex gap-2">
@@ -264,7 +245,7 @@ export default function AssignmentsIndex({ assignments, units, programs, stats, 
                                     <Link
                                         key={index}
                                         href={link.url || '#'}
-                                        className={`px-3 py-2 text-sm rounded-md ${
+                                        className={`px-2 py-1 text-xs rounded-md ${
                                             link.active
                                                 ? 'bg-blue-600 text-white'
                                                 : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'

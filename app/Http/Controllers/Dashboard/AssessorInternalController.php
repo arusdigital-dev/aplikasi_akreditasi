@@ -13,8 +13,10 @@ use App\Models\Document;
 use App\Models\Evaluation;
 use App\Models\EvaluationNote;
 use App\Models\EvaluationNoteHistory;
+use App\Models\Prodi;
 use App\Models\Program;
 use App\Models\Unit;
+use Illuminate\Http\BinaryFileResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -131,31 +133,43 @@ class AssessorInternalController extends Controller
         // Get documents that are ready for evaluation
         // Documents must be:
         // 1. Already collected by Prodi (exists in database)
-        // 2. Already converted to LPMPP standard format (validated_at is not null)
-        // 3. Waiting for assessor evaluation (has assignment with assessor_id = current user, or no evaluation yet)
+        // 2. From prodi that assessor has assignments for
+        $assessorProdiIds = Assignment::where('assessor_id', $user->id)
+            ->whereNull('unassigned_at')
+            ->pluck('prodi_id')
+            ->unique()
+            ->filter();
+
+        if ($assessorProdiIds->isEmpty()) {
+            // If assessor has no assignments, return empty result
+            $documents = Document::query()->whereRaw('1 = 0')->paginate(15);
+
+            return Inertia::render('Dashboard/AssessorInternal/EvaluationDocuments/Index', [
+                'documents' => $documents,
+                'prodis' => collect(),
+                'categories' => collect(),
+                'years' => collect(),
+                'stats' => [
+                    'total' => 0,
+                    'pending' => 0,
+                    'completed' => 0,
+                ],
+                'filters' => $request->only(['prodi_id', 'category', 'year', 'evaluation_status', 'search']),
+            ]);
+        }
+
         $query = Document::query()
             ->with([
                 'assignment.criterion.standard.program',
                 'assignment.assessor',
-                'assignment.unit',
-                'program',
-                'unit',
+                'prodi.fakultas',
                 'uploadedBy',
             ])
-            ->whereNotNull('validated_at') // Already converted to LPMPP standard format
-            ->whereHas('assignment', function ($q) use ($user) {
-                $q->where('assessor_id', $user->id)
-                    ->whereNull('unassigned_at'); // Active assignment
-            });
+            ->whereIn('prodi_id', $assessorProdiIds); // Documents from prodi that assessor has assignments for
 
-        // Filter by program
-        if ($request->filled('program_id')) {
-            $query->where('program_id', $request->program_id);
-        }
-
-        // Filter by unit
-        if ($request->filled('unit_id')) {
-            $query->where('unit_id', $request->unit_id);
+        // Filter by prodi
+        if ($request->filled('prodi_id')) {
+            $query->where('prodi_id', $request->prodi_id);
         }
 
         // Filter by category
@@ -173,7 +187,7 @@ class AssessorInternalController extends Controller
             match ($request->evaluation_status) {
                 'pending' => $query->whereDoesntHave('assignment.evaluations', function ($q) use ($user) {
                     $q->where('assessor_id', $user->id);
-                }),
+                })->orWhereNull('assignment_id'),
                 'completed' => $query->whereHas('assignment.evaluations', function ($q) use ($user) {
                     $q->where('assessor_id', $user->id);
                 }),
@@ -188,6 +202,9 @@ class AssessorInternalController extends Controller
                     ->orWhere('category', 'like', '%'.$request->search.'%')
                     ->orWhereHas('assignment.criterion', function ($subQ) use ($request) {
                         $subQ->where('name', 'like', '%'.$request->search.'%');
+                    })
+                    ->orWhereHas('prodi', function ($subQ) use ($request) {
+                        $subQ->where('name', 'like', '%'.$request->search.'%');
                     });
             });
         }
@@ -197,15 +214,44 @@ class AssessorInternalController extends Controller
             ->withQueryString();
 
         // Load evaluations for assignments in current page to check status efficiently
-        $assignmentIds = $documents->pluck('assignment_id')->unique();
-        $evaluatedAssignments = Evaluation::whereIn('assignment_id', $assignmentIds)
-            ->where('assessor_id', $user->id)
-            ->pluck('assignment_id')
-            ->unique();
+        $assignmentIds = $documents->pluck('assignment_id')->filter()->unique();
+        $evaluatedAssignments = $assignmentIds->isNotEmpty()
+            ? Evaluation::whereIn('assignment_id', $assignmentIds)
+                ->where('assessor_id', $user->id)
+                ->pluck('assignment_id')
+                ->unique()
+            : collect();
 
-        $documents->through(function ($document) use ($evaluatedAssignments) {
+        // Pre-load assignments for assessor's prodis to get criteria
+        $assessorAssignments = Assignment::where('assessor_id', $user->id)
+            ->whereNull('unassigned_at')
+            ->with('criterion')
+            ->get()
+            ->groupBy(function ($assignment) {
+                return (string) $assignment->prodi_id; // Ensure string key for UUID comparison
+            });
+
+        $documents->through(function ($document) use ($evaluatedAssignments, $assessorAssignments) {
             // Determine evaluation status
-            $evaluationStatus = $evaluatedAssignments->contains($document->assignment_id) ? 'completed' : 'pending';
+            $evaluationStatus = 'pending';
+            if ($document->assignment_id && $evaluatedAssignments->contains($document->assignment_id)) {
+                $evaluationStatus = 'completed';
+            }
+
+            // Get criterion from assignment or find from assessor's assignments for the same prodi
+            $criterion = 'N/A';
+            if ($document->assignment?->criterion) {
+                $criterion = $document->assignment->criterion->name;
+            } elseif ($document->prodi_id) {
+                $prodiIdKey = (string) $document->prodi_id;
+                if (isset($assessorAssignments[$prodiIdKey])) {
+                    // Get first assignment's criterion for this prodi
+                    $firstAssignment = $assessorAssignments[$prodiIdKey]->first();
+                    if ($firstAssignment?->criterion) {
+                        $criterion = $firstAssignment->criterion->name;
+                    }
+                }
+            }
 
             return [
                 'id' => $document->id,
@@ -213,34 +259,36 @@ class AssessorInternalController extends Controller
                 'category' => $document->category,
                 'year' => $document->year,
                 'uploaded_at' => $document->created_at->format('Y-m-d H:i:s'),
-                'criterion' => $document->assignment->criterion?->name ?? 'N/A',
-                'unit' => $document->unit?->name ?? $document->assignment->unit?->name ?? 'N/A',
-                'program' => $document->program?->name ?? $document->assignment->criterion?->standard?->program?->name ?? 'N/A',
+                'criterion' => $criterion,
+                'fakultas' => $document->prodi?->fakultas?->name ?? 'N/A',
+                'prodi' => $document->prodi?->name ?? 'N/A',
                 'evaluation_status' => $evaluationStatus,
                 'assignment_id' => $document->assignment_id,
             ];
         });
 
-        // Get filter options
-        $programs = Program::orderBy('name')->get(['id', 'name']);
-        $units = Unit::where('is_active', true)->orderBy('name')->get(['id', 'name', 'type']);
+        // Get filter options - prodis that assessor has assignments for
+        $prodis = Prodi::whereIn('id', $assessorProdiIds)
+            ->with('fakultas')
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get()
+            ->map(function ($prodi) {
+                return [
+                    'id' => $prodi->id,
+                    'name' => $prodi->name,
+                    'fakultas_name' => $prodi->fakultas?->name ?? 'N/A',
+                ];
+            });
 
-        $categories = Document::whereNotNull('validated_at')
-            ->whereHas('assignment', function ($q) use ($user) {
-                $q->where('assessor_id', $user->id)
-                    ->whereNull('unassigned_at');
-            })
+        $categories = Document::whereIn('prodi_id', $assessorProdiIds)
             ->distinct()
             ->pluck('category')
             ->filter()
             ->sort()
             ->values();
 
-        $years = Document::whereNotNull('validated_at')
-            ->whereHas('assignment', function ($q) use ($user) {
-                $q->where('assessor_id', $user->id)
-                    ->whereNull('unassigned_at');
-            })
+        $years = Document::whereIn('prodi_id', $assessorProdiIds)
             ->distinct()
             ->pluck('year')
             ->filter()
@@ -248,28 +296,19 @@ class AssessorInternalController extends Controller
             ->values();
 
         // Statistics
-        $totalDocuments = Document::whereNotNull('validated_at')
-            ->whereHas('assignment', function ($q) use ($user) {
-                $q->where('assessor_id', $user->id)
-                    ->whereNull('unassigned_at');
+        $totalDocuments = Document::whereIn('prodi_id', $assessorProdiIds)
+            ->count();
+
+        $pendingEvaluations = Document::whereIn('prodi_id', $assessorProdiIds)
+            ->where(function ($q) use ($user) {
+                $q->whereNull('assignment_id')
+                    ->orWhereDoesntHave('assignment.evaluations', function ($subQ) use ($user) {
+                        $subQ->where('assessor_id', $user->id);
+                    });
             })
             ->count();
 
-        $pendingEvaluations = Document::whereNotNull('validated_at')
-            ->whereHas('assignment', function ($q) use ($user) {
-                $q->where('assessor_id', $user->id)
-                    ->whereNull('unassigned_at');
-            })
-            ->whereDoesntHave('assignment.evaluations', function ($q) use ($user) {
-                $q->where('assessor_id', $user->id);
-            })
-            ->count();
-
-        $completedEvaluations = Document::whereNotNull('validated_at')
-            ->whereHas('assignment', function ($q) use ($user) {
-                $q->where('assessor_id', $user->id)
-                    ->whereNull('unassigned_at');
-            })
+        $completedEvaluations = Document::whereIn('prodi_id', $assessorProdiIds)
             ->whereHas('assignment.evaluations', function ($q) use ($user) {
                 $q->where('assessor_id', $user->id);
             })
@@ -277,8 +316,7 @@ class AssessorInternalController extends Controller
 
         return Inertia::render('Dashboard/AssessorInternal/EvaluationDocuments/Index', [
             'documents' => $documents,
-            'programs' => $programs,
-            'units' => $units,
+            'prodis' => $prodis,
             'categories' => $categories,
             'years' => $years,
             'stats' => [
@@ -286,7 +324,7 @@ class AssessorInternalController extends Controller
                 'pending' => $pendingEvaluations,
                 'completed' => $completedEvaluations,
             ],
-            'filters' => $request->only(['program_id', 'unit_id', 'category', 'year', 'evaluation_status', 'search']),
+            'filters' => $request->only(['prodi_id', 'category', 'year', 'evaluation_status', 'search']),
         ]);
     }
 
@@ -297,30 +335,37 @@ class AssessorInternalController extends Controller
     {
         $user = Auth::user();
 
+        // Get assessor's prodi IDs
+        $assessorProdiIds = Assignment::where('assessor_id', $user->id)
+            ->whereNull('unassigned_at')
+            ->pluck('prodi_id')
+            ->unique()
+            ->filter();
+
         $document = Document::with([
             'assignment.criterion.standard.program',
             'assignment.criterion.criteriaPoints',
-            'assignment.unit',
-            'program',
-            'unit',
+            'prodi.fakultas',
             'uploadedBy',
         ])
-            ->whereNotNull('validated_at')
-            ->whereHas('assignment', function ($q) use ($user) {
-                $q->where('assessor_id', $user->id)
-                    ->whereNull('unassigned_at');
-            })
+            ->whereIn('prodi_id', $assessorProdiIds)
             ->findOrFail($documentId);
 
         // Get existing evaluation note if any
-        $evaluationNote = EvaluationNote::where('assignment_id', $document->assignment_id)
-            ->where('assessor_id', $user->id)
-            ->where('document_id', $documentId)
-            ->first();
+        $evaluationNote = null;
+        if ($document->assignment_id) {
+            $evaluationNote = EvaluationNote::where('assignment_id', $document->assignment_id)
+                ->where('assessor_id', $user->id)
+                ->where('document_id', $documentId)
+                ->first();
+        }
 
         // Get criteria for specific notes (all criteria from the same standard)
-        $standard = $document->assignment->criterion->standard;
-        $criteria = $standard ? $standard->criteria()->orderBy('order_index')->get() : collect();
+        $criteria = collect();
+        if ($document->assignment?->criterion?->standard) {
+            $standard = $document->assignment->criterion->standard;
+            $criteria = $standard->criteria()->orderBy('order_index')->get();
+        }
 
         return Inertia::render('Dashboard/AssessorInternal/EvaluationDocuments/Show', [
             'document' => [
@@ -329,9 +374,9 @@ class AssessorInternalController extends Controller
                 'category' => $document->category,
                 'year' => $document->year,
                 'uploaded_at' => $document->created_at->format('Y-m-d H:i:s'),
-                'criterion' => $document->assignment->criterion?->name ?? 'N/A',
-                'unit' => $document->unit?->name ?? $document->assignment->unit?->name ?? 'N/A',
-                'program' => $document->program?->name ?? $document->assignment->criterion?->standard?->program?->name ?? 'N/A',
+                'criterion' => $document->assignment?->criterion?->name ?? 'N/A',
+                'fakultas' => $document->prodi?->fakultas?->name ?? 'N/A',
+                'prodi' => $document->prodi?->name ?? 'N/A',
                 'assignment_id' => $document->assignment_id,
             ],
             'criteria' => $criteria->map(function ($criterion) {
@@ -370,7 +415,6 @@ class AssessorInternalController extends Controller
         if ($request->document_id) {
             $document = Document::where('id', $request->document_id)
                 ->where('assignment_id', $assignment->id)
-                ->whereNotNull('validated_at')
                 ->firstOrFail();
         }
 
@@ -579,25 +623,29 @@ class AssessorInternalController extends Controller
     {
         $user = Auth::user();
 
+        // Get assessor's prodi IDs
+        $assessorProdiIds = Assignment::where('assessor_id', $user->id)
+            ->whereNull('unassigned_at')
+            ->pluck('prodi_id')
+            ->unique()
+            ->filter();
+
         $document = Document::with([
             'assignment.criterion.standard.program',
-            'assignment.unit',
-            'program',
-            'unit',
+            'prodi.fakultas',
         ])
-            ->whereNotNull('validated_at')
-            ->whereHas('assignment', function ($q) use ($user) {
-                $q->where('assessor_id', $user->id)
-                    ->whereNull('unassigned_at');
-            })
+            ->whereIn('prodi_id', $assessorProdiIds)
             ->findOrFail($documentId);
 
         // Get evaluation note for this document
-        $evaluationNote = EvaluationNote::where('assignment_id', $document->assignment_id)
-            ->where('assessor_id', $user->id)
-            ->where('document_id', $documentId)
-            ->with(['histories.user', 'prodiCommentBy'])
-            ->first();
+        $evaluationNote = null;
+        if ($document->assignment_id) {
+            $evaluationNote = EvaluationNote::where('assignment_id', $document->assignment_id)
+                ->where('assessor_id', $user->id)
+                ->where('document_id', $documentId)
+                ->with(['histories.user', 'prodiCommentBy'])
+                ->first();
+        }
 
         if (! $evaluationNote) {
             return redirect()->route('assessor-internal.evaluation-documents.index')
@@ -633,9 +681,9 @@ class AssessorInternalController extends Controller
                 'file_name' => $document->file_name,
                 'category' => $document->category,
                 'year' => $document->year,
-                'criterion' => $document->assignment->criterion?->name ?? 'N/A',
-                'unit' => $document->unit?->name ?? $document->assignment->unit?->name ?? 'N/A',
-                'program' => $document->program?->name ?? $document->assignment->criterion?->standard?->program?->name ?? 'N/A',
+                'criterion' => $document->assignment?->criterion?->name ?? 'N/A',
+                'fakultas' => $document->prodi?->fakultas?->name ?? 'N/A',
+                'prodi' => $document->prodi?->name ?? 'N/A',
             ],
             'evaluationNote' => [
                 'id' => $evaluationNote->id,
@@ -681,7 +729,7 @@ class AssessorInternalController extends Controller
             ->with([
                 'criterion.standard.program',
                 'criterion.criteriaPoints',
-                'unit',
+                'prodi.fakultas',
                 'evaluations.criteriaPoint',
                 'lockedBy',
             ])
@@ -708,16 +756,9 @@ class AssessorInternalController extends Controller
             };
         }
 
-        // Filter by unit
-        if ($request->filled('unit_id')) {
-            $query->where('unit_id', $request->unit_id);
-        }
-
-        // Filter by program
-        if ($request->filled('program_id')) {
-            $query->whereHas('criterion.standard.program', function ($q) use ($request) {
-                $q->where('programs.id', $request->program_id);
-            });
+        // Filter by prodi
+        if ($request->filled('prodi_id')) {
+            $query->where('prodi_id', $request->prodi_id);
         }
 
         $assignments = $query->latest('assigned_date')
@@ -746,9 +787,9 @@ class AssessorInternalController extends Controller
 
                 return [
                     'id' => $assignment->id,
-                    'unit' => $assignment->unit?->name ?? 'N/A',
+                    'fakultas' => $assignment->prodi?->fakultas?->name ?? 'N/A',
+                    'prodi' => $assignment->prodi?->name ?? 'N/A',
                     'criterion' => $assignment->criterion?->name ?? 'N/A',
-                    'program' => $assignment->criterion?->standard?->program?->name ?? 'N/A',
                     'weight' => $weight,
                     'status' => $status,
                     'deadline' => $assignment->deadline?->format('Y-m-d') ?? null,
@@ -759,21 +800,22 @@ class AssessorInternalController extends Controller
                 ];
             });
 
-        // Get filter options
-        $units = Unit::where('is_active', true)
+        // Get filter options - prodis
+        $prodis = Prodi::where('is_active', true)
             ->whereHas('assignments', function ($q) use ($user) {
                 $q->where('assessor_id', $user->id)
                     ->whereNull('unassigned_at');
             })
+            ->with('fakultas')
             ->orderBy('name')
-            ->get(['id', 'name']);
-
-        $programs = Program::whereHas('standards.criteria.assignments', function ($q) use ($user) {
-            $q->where('assessor_id', $user->id)
-                ->whereNull('unassigned_at');
-        })
-            ->orderBy('name')
-            ->get(['id', 'name']);
+            ->get()
+            ->map(function ($prodi) {
+                return [
+                    'id' => $prodi->id,
+                    'name' => $prodi->name,
+                    'fakultas_name' => $prodi->fakultas?->name ?? 'N/A',
+                ];
+            });
 
         // Statistics
         $totalAssignments = Assignment::where('assessor_id', $user->id)
@@ -808,15 +850,14 @@ class AssessorInternalController extends Controller
 
         return Inertia::render('Dashboard/AssessorInternal/Assignments/Index', [
             'assignments' => $assignments,
-            'units' => $units,
-            'programs' => $programs,
+            'prodis' => $prodis,
             'stats' => [
                 'total' => $totalAssignments,
                 'not_started' => $notStarted,
                 'in_progress' => $inProgress,
                 'completed' => $completed,
             ],
-            'filters' => $request->only(['status', 'unit_id', 'program_id']),
+            'filters' => $request->only(['status', 'prodi_id']),
         ]);
     }
 
@@ -832,7 +873,7 @@ class AssessorInternalController extends Controller
             'criterion.criteriaPoints' => function ($q) {
                 $q->orderBy('id');
             },
-            'unit',
+            'prodi.fakultas',
             'evaluations' => function ($q) use ($user) {
                 $q->where('assessor_id', $user->id);
             },
@@ -857,51 +898,78 @@ class AssessorInternalController extends Controller
             ->get()
             ->keyBy('criteria_point_id');
 
-        // Check if all documents are validated
-        $documents = Document::where('assignment_id', $assignment->id)
-            ->get();
+        // Get documents for this assignment
+        // First, try to get documents directly linked to assignment
+        $documents = Document::where('assignment_id', $assignment->id)->get();
+
+        // If no documents linked to assignment, get documents from the same prodi
+        // that might be relevant to this assignment
+        if ($documents->isEmpty() && $assignment->prodi_id) {
+            $documents = Document::where('prodi_id', $assignment->prodi_id)
+                ->latest()
+                ->get();
+        }
 
         $allDocumentsValidated = $documents->count() > 0 && $documents->every(function ($doc) {
             return $doc->validated_at !== null;
         });
 
+        $hasDocuments = $documents->count() > 0;
+        $hasUnvalidatedDocuments = $documents->count() > 0 && $documents->some(function ($doc) {
+            return $doc->validated_at === null;
+        });
+
         $warnings = [];
         if ($documents->count() === 0) {
-            $warnings[] = 'Belum ada dokumen yang diunggah untuk penugasan ini.';
-        } elseif (! $allDocumentsValidated) {
-            $warnings[] = 'Beberapa dokumen belum divalidasi. Pastikan semua dokumen sudah divalidasi sebelum menyimpan penilaian.';
+            $warnings[] = 'Belum ada dokumen yang diunggah untuk penugasan ini. Anda tetap dapat melakukan penilaian, namun disarankan untuk menunggu dokumen tersedia.';
+        } elseif ($hasUnvalidatedDocuments) {
+            $warnings[] = 'Beberapa dokumen belum divalidasi. Anda tetap dapat melakukan penilaian berdasarkan dokumen yang tersedia.';
         }
 
         return Inertia::render('Dashboard/AssessorInternal/Assignments/Evaluate', [
             'assignment' => [
                 'id' => $assignment->id,
-                'unit' => $assignment->unit?->name ?? 'N/A',
+                'fakultas' => $assignment->prodi?->fakultas?->name ?? 'N/A',
+                'prodi' => $assignment->prodi?->name ?? 'N/A',
                 'criterion' => $assignment->criterion?->name ?? 'N/A',
-                'program' => $assignment->criterion?->standard?->program?->name ?? 'N/A',
                 'deadline' => $assignment->deadline instanceof \Carbon\Carbon ? $assignment->deadline->format('Y-m-d') : ($assignment->deadline ? (string) $assignment->deadline : null),
                 'assigned_date' => $assignment->assigned_date instanceof \Carbon\Carbon ? $assignment->assigned_date->format('Y-m-d') : ($assignment->assigned_date ? (string) $assignment->assigned_date : null),
                 'is_locked' => $assignment->isLocked(),
             ],
-            'criteriaPoints' => $criteriaPoints->map(function ($point) use ($existingEvaluations) {
-                $evaluation = $existingEvaluations->get($point->id);
-
+            'documents' => $documents->map(function ($doc) {
                 return [
-                    'id' => $point->id,
-                    'title' => $point->title,
-                    'description' => $point->description,
-                    'max_score' => $point->max_score,
-                    'evaluation' => $evaluation ? [
-                        'id' => $evaluation->id,
-                        'score' => $evaluation->score,
-                        'notes' => $evaluation->notes,
-                        'descriptive_narrative' => $evaluation->descriptive_narrative,
-                        'improvement_suggestion' => $evaluation->improvement_suggestion,
-                        'evaluation_status' => $evaluation->evaluation_status,
-                    ] : null,
+                    'id' => $doc->id,
+                    'file_name' => $doc->file_name,
+                    'file_path' => $doc->file_path,
+                    'category' => $doc->category,
+                    'year' => $doc->year,
+                    'validated_at' => $doc->validated_at?->format('Y-m-d H:i:s'),
+                    'uploaded_at' => $doc->created_at?->format('Y-m-d H:i:s'),
                 ];
             }),
+            'criteriaPoints' => $criteriaPoints->isEmpty() 
+                ? []
+                : $criteriaPoints->map(function ($point) use ($existingEvaluations) {
+                    $evaluation = $existingEvaluations->get($point->id);
+
+                    return [
+                        'id' => $point->id,
+                        'title' => $point->title,
+                        'description' => $point->description,
+                        'max_score' => $point->max_score,
+                        'evaluation' => $evaluation ? [
+                            'id' => $evaluation->id,
+                            'score' => $evaluation->score,
+                            'notes' => $evaluation->notes,
+                            'descriptive_narrative' => $evaluation->descriptive_narrative,
+                            'improvement_suggestion' => $evaluation->improvement_suggestion,
+                            'evaluation_status' => $evaluation->evaluation_status,
+                        ] : null,
+                    ];
+                })->values(),
             'warnings' => $warnings,
             'allDocumentsValidated' => $allDocumentsValidated,
+            'hasDocuments' => $hasDocuments,
         ]);
     }
 
@@ -912,7 +980,7 @@ class AssessorInternalController extends Controller
     {
         $user = Auth::user();
 
-        $assignment = Assignment::where('id', $request->assignment_id)
+        $assignment = Assignment::where('id', $assignmentId)
             ->where('assessor_id', $user->id)
             ->whereNull('unassigned_at')
             ->firstOrFail();
@@ -920,12 +988,6 @@ class AssessorInternalController extends Controller
         // Check if assignment is locked
         if ($assignment->isLocked()) {
             return back()->withErrors(['assignment' => 'Penilaian ini sudah dikunci dan tidak dapat diubah.']);
-        }
-
-        // Validate all documents are validated
-        $documents = Document::where('assignment_id', $assignment->id)->get();
-        if ($documents->count() > 0 && ! $documents->every(fn ($doc) => $doc->validated_at !== null)) {
-            return back()->withErrors(['documents' => 'Semua dokumen harus divalidasi sebelum menyimpan penilaian.']);
         }
 
         // Store/update evaluations
@@ -970,12 +1032,6 @@ class AssessorInternalController extends Controller
         // Check if assignment is locked
         if ($assignment->isLocked()) {
             return back()->withErrors(['assignment' => 'Penilaian ini sudah dikunci dan tidak dapat diubah.']);
-        }
-
-        // Validate all documents are validated
-        $documents = Document::where('assignment_id', $assignment->id)->get();
-        if ($documents->count() > 0 && ! $documents->every(fn ($doc) => $doc->validated_at !== null)) {
-            return back()->withErrors(['documents' => 'Semua dokumen harus divalidasi sebelum menyimpan penilaian.']);
         }
 
         // Track changes for logging
@@ -1399,7 +1455,7 @@ class AssessorInternalController extends Controller
                 $evaluations = $assignment->evaluations;
                 if ($evaluations->isNotEmpty()) {
                     $avgScore = $evaluations->avg('score');
-                    $weight = $assignment->criterion?->weight ?? 0;
+                    $weight = (float) ($assignment->criterion?->weight ?? 0);
                     $totalScore += $avgScore * $weight;
                     $totalWeight += $weight;
 
@@ -1417,7 +1473,7 @@ class AssessorInternalController extends Controller
                         'criterion_id' => $assignment->criteria_id,
                         'criterion_name' => $assignment->criterion?->name ?? 'N/A',
                         'score' => round($avgScore, 2),
-                        'weight' => $weight,
+                        'weight' => (float) $weight,
                         'weighted_score' => round($avgScore * $weight, 2),
                         'status' => $evaluations->first()?->evaluation_status ?? null,
                         'notes' => $evaluationNote?->general_notes ?? null,
@@ -1677,5 +1733,30 @@ class AssessorInternalController extends Controller
             'large_gaps' => $largeGaps,
             'improvement_opportunities' => $improvementOpportunities,
         ];
+    }
+
+    /**
+     * Download a document.
+     */
+    public function downloadDocument(string $id): BinaryFileResponse
+    {
+        $user = Auth::user();
+
+        // Get document
+        $document = Document::findOrFail($id);
+
+        // Verify assessor has access: document must be from prodi that assessor has assignments for
+        $hasAccess = Assignment::where('assessor_id', $user->id)
+            ->where('prodi_id', $document->prodi_id)
+            ->whereNull('unassigned_at')
+            ->exists();
+
+        if (! $hasAccess) {
+            abort(403, 'Anda tidak memiliki akses untuk mengunduh dokumen ini.');
+        }
+
+        $filePath = Storage::disk('local')->path($document->file_path);
+
+        return response()->download($filePath, $document->file_name);
     }
 }

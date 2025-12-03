@@ -2,13 +2,12 @@
 
 namespace Database\Seeders;
 
+use App\Models\Fakultas;
+use App\Models\Prodi;
 use App\Models\Program;
 use App\Models\Role;
-use App\Models\Unit;
-use App\Models\UnitType;
 use App\Models\User;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 class CoordinatorProdiSeeder extends Seeder
@@ -34,32 +33,24 @@ class CoordinatorProdiSeeder extends Seeder
             ]
         );
 
-        // Get or create Fakultas Teknik (from AdminLPMPPSeeder)
-        $fakultas = Unit::where('name', 'Fakultas Teknik')
-            ->where('type', UnitType::Fakultas)
-            ->first();
-
-        if (! $fakultas) {
-            $fakultas = Unit::create([
-                'name' => 'Fakultas Teknik',
-                'type' => UnitType::Fakultas,
+        // Get or create Fakultas Teknik
+        $fakultas = Fakultas::firstOrCreate(
+            ['name' => 'Fakultas Teknik'],
+            [
+                'kode_fakultas' => 'FT',
                 'is_active' => true,
-            ]);
-        }
+            ]
+        );
 
         // Get or create Prodi Teknik Informatika
-        $prodi = Unit::where('name', 'Teknik Informatika')
-            ->where('type', UnitType::Prodi)
-            ->first();
-
-        if (! $prodi) {
-            $prodi = Unit::create([
-                'name' => 'Teknik Informatika',
-                'type' => UnitType::Prodi,
-                'parent_id' => $fakultas->id,
+        $prodi = Prodi::firstOrCreate(
+            ['name' => 'Teknik Informatika'],
+            [
+                'fakultas_id' => $fakultas->id,
+                'kode_prodi' => 'TI',
                 'is_active' => true,
-            ]);
-        }
+            ]
+        );
 
         // Create Koordinator Prodi user for Teknik Informatika
         $coordinator1 = User::firstOrCreate(
@@ -70,29 +61,21 @@ class CoordinatorProdiSeeder extends Seeder
                 'email_verified_at' => now(),
                 'is_active' => true,
                 'registration_completed_at' => now(),
-                'unit_id' => $prodi->id,
+                'prodi_id' => $prodi->id,
             ]
         );
 
-        // Assign role to user for specific unit (using user_unit_roles table)
-        if (! DB::table('user_unit_roles')
-            ->where('user_id', $coordinator1->id)
-            ->where('role_id', $coordinatorRole->id)
-            ->where('unit_id', $prodi->id)
-            ->exists()) {
-            DB::table('user_unit_roles')->insert([
-                'user_id' => $coordinator1->id,
-                'role_id' => $coordinatorRole->id,
-                'unit_id' => $prodi->id,
-            ]);
+        // Assign role to user (global role, not unit-specific)
+        if (! $coordinator1->roles->contains($coordinatorRole->id)) {
+            $coordinator1->roles()->attach($coordinatorRole->id);
         }
 
         // Create another Prodi for variety
-        $prodiSI = Unit::firstOrCreate(
+        $prodiSI = Prodi::firstOrCreate(
             ['name' => 'Sistem Informasi'],
             [
-                'type' => UnitType::Prodi,
-                'parent_id' => $fakultas->id,
+                'fakultas_id' => $fakultas->id,
+                'kode_prodi' => 'SI',
                 'is_active' => true,
             ]
         );
@@ -106,21 +89,13 @@ class CoordinatorProdiSeeder extends Seeder
                 'email_verified_at' => now(),
                 'is_active' => true,
                 'registration_completed_at' => now(),
-                'unit_id' => $prodiSI->id,
+                'prodi_id' => $prodiSI->id,
             ]
         );
 
-        // Assign role to user for specific unit
-        if (! DB::table('user_unit_roles')
-            ->where('user_id', $coordinator2->id)
-            ->where('role_id', $coordinatorRole->id)
-            ->where('unit_id', $prodiSI->id)
-            ->exists()) {
-            DB::table('user_unit_roles')->insert([
-                'user_id' => $coordinator2->id,
-                'role_id' => $coordinatorRole->id,
-                'unit_id' => $prodiSI->id,
-            ]);
+        // Assign role to user (global role, not unit-specific)
+        if (! $coordinator2->roles->contains($coordinatorRole->id)) {
+            $coordinator2->roles()->attach($coordinatorRole->id);
         }
 
         // Ensure programs exist for these prodi
@@ -146,12 +121,12 @@ class CoordinatorProdiSeeder extends Seeder
         $this->command->info('  Email: koor.ti@umrah.ac.id');
         $this->command->info('  Password: password');
         $this->command->info('  Role: Koordinator Prodi');
-        $this->command->info('  Unit: Teknik Informatika');
+        $this->command->info('  Prodi: Teknik Informatika');
         $this->command->info('');
         $this->command->info('User 2:');
         $this->command->info('  Email: koor.si@umrah.ac.id');
         $this->command->info('  Password: password');
         $this->command->info('  Role: Koordinator Prodi');
-        $this->command->info('  Unit: Sistem Informasi');
+        $this->command->info('  Prodi: Sistem Informasi');
     }
 }

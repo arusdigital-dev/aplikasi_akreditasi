@@ -24,6 +24,7 @@ class Assignment extends Model
         'access_level',
         'deadline',
         'unit_id',
+        'prodi_id',
         'notes',
         'unassigned_at',
         'unassigned_by',
@@ -87,6 +88,14 @@ class Assignment extends Model
     public function unit(): BelongsTo
     {
         return $this->belongsTo(Unit::class, 'unit_id');
+    }
+
+    /**
+     * Get the prodi for this assignment.
+     */
+    public function prodi(): BelongsTo
+    {
+        return $this->belongsTo(Prodi::class, 'prodi_id');
     }
 
     /**

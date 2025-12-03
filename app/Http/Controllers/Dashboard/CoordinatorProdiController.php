@@ -5,10 +5,14 @@ namespace App\Http\Controllers\Dashboard;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CoordinatorProdi\SendReminderRequest;
 use App\Http\Requests\CoordinatorProdi\SetTargetRequest;
+use App\Http\Requests\CoordinatorProdi\StoreCriteriaPointRequest;
 use App\Http\Requests\CoordinatorProdi\StoreDocumentRequest;
+use App\Http\Requests\CoordinatorProdi\UpdateCriteriaPointRequest;
 use App\Http\Requests\CoordinatorProdi\UpdateDocumentRequest;
+use App\Models\ActivityLog;
 use App\Models\AkreditasiTarget;
 use App\Models\Assignment;
+use App\Models\CriteriaPoint;
 use App\Models\Criterion;
 use App\Models\Document;
 use App\Models\Employee;
@@ -47,7 +51,7 @@ class CoordinatorProdiController extends Controller
         $programs = $user->accessiblePrograms()->get();
 
         // Document statistics
-        $documentsQuery = Document::where('unit_id', $user->unit_id)
+        $documentsQuery = Document::where('prodi_id', $user->prodi_id)
             ->where('year', $year);
 
         $totalDocuments = $documentsQuery->count();
@@ -62,16 +66,16 @@ class CoordinatorProdiController extends Controller
             : 0;
 
         // Assessment statistics
-        $assignments = Assignment::where('unit_id', $user->unit_id)
+        $assignments = Assignment::where('prodi_id', $user->prodi_id)
             ->with(['evaluations', 'criterion.standard.program'])
             ->get();
 
         $totalEvaluations = Evaluation::whereHas('assignment', function ($q) use ($user) {
-            $q->where('unit_id', $user->unit_id);
+            $q->where('prodi_id', $user->prodi_id);
         })->count();
 
         $averageScore = Evaluation::whereHas('assignment', function ($q) use ($user) {
-            $q->where('unit_id', $user->unit_id);
+            $q->where('prodi_id', $user->prodi_id);
         })->avg('score') ?? 0;
 
         // Get score recap per criteria
@@ -126,10 +130,33 @@ class CoordinatorProdiController extends Controller
     public function createDocument(Request $request): Response
     {
         $user = Auth::user();
-        $programs = $user->accessiblePrograms()->get(['id', 'name']);
+
+        // Load prodi and fakultas relationships
+        $user->load(['prodi.fakultas']);
+
+        // Get user's prodi
+        $prodi = $user->prodi;
+
+        // If prodi_id is null, try to find prodi by name from user's name or unit
+        if (! $prodi && $user->name) {
+            // Extract prodi name from user name (e.g., "Koordinator Teknik Informatika" -> "Teknik Informatika")
+            $prodiName = str_replace('Koordinator ', '', $user->name);
+            $prodi = \App\Models\Prodi::where('name', $prodiName)->first();
+
+            // If found, update user's prodi_id
+            if ($prodi) {
+                $user->update(['prodi_id' => $prodi->id]);
+                $user->load(['prodi.fakultas']);
+                $prodi = $user->prodi;
+            }
+        }
 
         return Inertia::render('Dashboard/CoordinatorProdi/Documents/Create', [
-            'programs' => $programs,
+            'prodi' => $prodi ? [
+                'id' => $prodi->id,
+                'name' => $prodi->name,
+                'fakultas_name' => $prodi->fakultas?->name ?? 'N/A',
+            ] : null,
         ]);
     }
 
@@ -140,8 +167,8 @@ class CoordinatorProdiController extends Controller
     {
         $user = Auth::user();
 
-        $query = Document::where('unit_id', $user->unit_id)
-            ->with(['program', 'uploadedBy', 'validatedBy', 'rejectedBy']);
+        $query = Document::where('prodi_id', $user->prodi_id)
+            ->with(['program', 'prodi', 'uploadedBy', 'validatedBy', 'rejectedBy']);
 
         // Filters
         if ($request->filled('category')) {
@@ -171,14 +198,14 @@ class CoordinatorProdiController extends Controller
             ->withQueryString();
 
         // Get filter options
-        $categories = Document::where('unit_id', $user->unit_id)
+        $categories = Document::where('prodi_id', $user->prodi_id)
             ->distinct()
             ->pluck('category')
             ->filter()
             ->sort()
             ->values();
 
-        $years = Document::where('unit_id', $user->unit_id)
+        $years = Document::where('prodi_id', $user->prodi_id)
             ->distinct()
             ->pluck('year')
             ->filter()
@@ -187,10 +214,10 @@ class CoordinatorProdiController extends Controller
 
         // Statistics
         $stats = [
-            'total' => Document::where('unit_id', $user->unit_id)->count(),
-            'validated' => Document::where('unit_id', $user->unit_id)->whereNotNull('validated_at')->count(),
-            'pending' => Document::where('unit_id', $user->unit_id)->whereNull('validated_at')->whereNull('rejected_by')->count(),
-            'rejected' => Document::where('unit_id', $user->unit_id)->whereNotNull('rejected_by')->count(),
+            'total' => Document::where('prodi_id', $user->prodi_id)->count(),
+            'validated' => Document::where('prodi_id', $user->prodi_id)->whereNotNull('validated_at')->count(),
+            'pending' => Document::where('prodi_id', $user->prodi_id)->whereNull('validated_at')->whereNull('rejected_by')->count(),
+            'rejected' => Document::where('prodi_id', $user->prodi_id)->whereNotNull('rejected_by')->count(),
         ];
 
         return Inertia::render('Dashboard/CoordinatorProdi/Documents/Index', [
@@ -210,19 +237,22 @@ class CoordinatorProdiController extends Controller
         $user = Auth::user();
         $file = $request->file('file');
 
+        // Validate that user has prodi_id
+        if (! $user->prodi_id) {
+            return redirect()->back()->with('error', 'Anda belum terhubung dengan Program Studi.');
+        }
+
         // Generate file path
-        $year = $request->year;
-        $programId = $request->program_id;
+        $year = $request->year ?? Carbon::now()->year;
         $fileName = time().'_'.str()->slug($file->getClientOriginalName());
-        $filePath = "documents/{$user->unit_id}/{$programId}/{$year}/{$fileName}";
+        $filePath = "documents/{$user->prodi_id}/{$year}/{$fileName}";
 
         // Store file
         Storage::disk('local')->put($filePath, file_get_contents($file->getRealPath()));
 
         // Create document record
-        $document = Document::create([
-            'unit_id' => $user->unit_id,
-            'program_id' => $request->program_id,
+        $documentData = [
+            'prodi_id' => $user->prodi_id,
             'file_path' => $filePath,
             'file_name' => $file->getClientOriginalName(),
             'file_type' => $file->getClientMimeType(),
@@ -231,8 +261,14 @@ class CoordinatorProdiController extends Controller
             'year' => $year,
             'metadata' => $request->metadata ?? [],
             'uploaded_by' => $user->id,
-            'assignment_id' => $request->assignment_id,
-        ]);
+        ];
+
+        // Only add assignment_id if it's not null
+        if ($request->filled('assignment_id')) {
+            $documentData['assignment_id'] = $request->assignment_id;
+        }
+
+        $document = Document::create($documentData);
 
         return redirect()->route('coordinator-prodi.documents.index')
             ->with('success', 'Dokumen berhasil diupload.');
@@ -244,7 +280,7 @@ class CoordinatorProdiController extends Controller
     public function updateDocument(UpdateDocumentRequest $request, string $id): RedirectResponse
     {
         $user = Auth::user();
-        $document = Document::where('unit_id', $user->unit_id)->findOrFail($id);
+        $document = Document::where('prodi_id', $user->prodi_id)->findOrFail($id);
 
         $updateData = [];
 
@@ -257,7 +293,7 @@ class CoordinatorProdiController extends Controller
             // Store new file
             $file = $request->file('file');
             $fileName = time().'_'.str()->slug($file->getClientOriginalName());
-            $filePath = "documents/{$user->unit_id}/{$document->program_id}/{$document->year}/{$fileName}";
+            $filePath = "documents/{$user->prodi_id}/{$document->year}/{$fileName}";
 
             Storage::disk('local')->put($filePath, file_get_contents($file->getRealPath()));
 
@@ -293,7 +329,7 @@ class CoordinatorProdiController extends Controller
     public function deleteDocument(string $id): RedirectResponse
     {
         $user = Auth::user();
-        $document = Document::where('unit_id', $user->unit_id)->findOrFail($id);
+        $document = Document::where('prodi_id', $user->prodi_id)->findOrFail($id);
 
         // Delete file
         if ($document->file_path && Storage::disk('local')->exists($document->file_path)) {
@@ -312,7 +348,7 @@ class CoordinatorProdiController extends Controller
     public function downloadDocument(string $id): BinaryFileResponse
     {
         $user = Auth::user();
-        $document = Document::where('unit_id', $user->unit_id)->findOrFail($id);
+        $document = Document::where('prodi_id', $user->prodi_id)->findOrFail($id);
 
         $filePath = Storage::disk('local')->path($document->file_path);
 
@@ -354,7 +390,7 @@ class CoordinatorProdiController extends Controller
 
                 foreach ($standard->criteria as $criterion) {
                     // Check if documents exist for this criterion
-                    $documentsCount = Document::where('unit_id', $user->unit_id)
+                    $documentsCount = Document::where('prodi_id', $user->prodi_id)
                         ->where('program_id', $program->id)
                         ->where('year', $year)
                         ->whereHas('assignment', function ($q) use ($criterion) {
@@ -454,7 +490,7 @@ class CoordinatorProdiController extends Controller
         $user = Auth::user();
 
         $query = Evaluation::whereHas('assignment', function ($q) use ($user) {
-            $q->where('unit_id', $user->unit_id);
+            $q->where('prodi_id', $user->prodi_id);
         })->with(['assignment.criterion.standard.program', 'assignment.assessor', 'criteriaPoint']);
 
         if ($request->filled('program_id')) {
@@ -611,13 +647,13 @@ class CoordinatorProdiController extends Controller
                     'based_on' => 'default',
                 ];
 
-                $maxScore = $criterion->criteriaPoints->sum('max_score');
+                $maxScore = $criterion->criteriaPoints->sum('max_score') ?? 0;
                 $criteriaData['max_score'] = $maxScore;
 
                 // Check if there are evaluations
                 $evaluations = Evaluation::whereHas('assignment', function ($q) use ($criterion, $user) {
                     $q->where('criteria_id', $criterion->id)
-                        ->where('unit_id', $user->unit_id);
+                        ->where('prodi_id', $user->prodi_id);
                 })->get();
 
                 if ($evaluations->isNotEmpty()) {
@@ -627,7 +663,7 @@ class CoordinatorProdiController extends Controller
                     $criteriaData['based_on'] = 'evaluations';
                 } else {
                     // Check document completeness
-                    $documentsCount = Document::where('unit_id', $user->unit_id)
+                    $documentsCount = Document::where('prodi_id', $user->prodi_id)
                         ->where('program_id', $programId)
                         ->where('year', $year)
                         ->whereHas('assignment', function ($q) use ($criterion) {
@@ -646,8 +682,13 @@ class CoordinatorProdiController extends Controller
                     }
                 }
 
+                // Calculate percentage for criteria
+                $criteriaData['percentage'] = $maxScore > 0
+                    ? round(($criteriaData['simulated_score'] / $maxScore) * 100, 2)
+                    : 0;
+
                 // Calculate weighted score for this criteria
-                $weightedScore = ($criteriaData['simulated_score'] / $maxScore) * $criterion->weight;
+                $weightedScore = $maxScore > 0 ? ($criteriaData['simulated_score'] / $maxScore) * $criterion->weight : 0;
                 $standardData['simulated_score'] += $weightedScore;
                 $standardData['max_score'] += $criterion->weight;
 
@@ -689,57 +730,195 @@ class CoordinatorProdiController extends Controller
     }
 
     /**
-     * Display criteria points.
+     * Display a listing of criteria points.
      */
     public function criteriaPoints(Request $request): Response
     {
-        $user = Auth::user();
-        $programs = $user->accessiblePrograms()->get(['id', 'name']);
+        $filters = [
+            'criteria_id' => $request->get('criteria_id'),
+            'search' => $request->get('search'),
+        ];
 
-        // If no program_id provided, use first accessible program or show selection
-        if (! $request->filled('program_id')) {
-            if ($programs->isEmpty()) {
-                return Inertia::render('Dashboard/CoordinatorProdi/CriteriaPoints/Index', [
-                    'standards' => [],
-                    'totalWeight' => 0,
-                    'program' => null,
-                    'programs' => [],
-                    'filters' => [],
-                ]);
-            }
-            $program = $programs->first();
-        } else {
-            $request->validate([
-                'program_id' => ['required', 'string', 'exists:programs,id'],
-            ]);
-            $program = $user->accessiblePrograms()->findOrFail($request->program_id);
+        $query = CriteriaPoint::query()
+            ->with(['criterion.standard.program']);
+
+        if ($filters['criteria_id']) {
+            $query->where('criteria_id', $filters['criteria_id']);
         }
 
-        $request->validate([
-            'standard_id' => ['nullable', 'string', 'exists:standards,id'],
-            'criteria_id' => ['nullable', 'string', 'exists:criteria,id'],
-        ]);
-
-        $programId = $program->id;
-
-        $query = Standard::where('program_id', $programId)
-            ->with(['criteria.criteriaPoints']);
-
-        if ($request->filled('standard_id')) {
-            $query->where('id', $request->standard_id);
+        if ($filters['search']) {
+            $query->where(function ($q) use ($filters) {
+                $q->where('title', 'like', '%'.$filters['search'].'%')
+                    ->orWhere('description', 'like', '%'.$filters['search'].'%');
+            });
         }
 
-        $standards = $query->orderBy('order_index')->get();
+        $criteriaPoints = $query->orderBy('id')->paginate(15);
 
-        $totalWeight = $standards->sum('weight');
+        // Get all criteria for filter dropdown
+        $criteria = Criterion::with(['standard.program'])
+            ->orderBy('order_index')
+            ->get()
+            ->map(function ($criterion) {
+                return [
+                    'id' => $criterion->id,
+                    'name' => $criterion->name,
+                    'standard' => $criterion->standard?->name ?? 'N/A',
+                    'program' => $criterion->standard?->program?->name ?? 'N/A',
+                ];
+            });
 
         return Inertia::render('Dashboard/CoordinatorProdi/CriteriaPoints/Index', [
-            'standards' => $standards,
-            'totalWeight' => $totalWeight,
-            'program' => $program,
-            'programs' => $programs,
-            'filters' => $request->only(['standard_id', 'criteria_id']),
+            'criteriaPoints' => $criteriaPoints,
+            'criteria' => $criteria,
+            'filters' => $filters,
         ]);
+    }
+
+    /**
+     * Show the form for creating a new criteria point.
+     */
+    public function createCriteriaPoint(Request $request): Response
+    {
+        $criteria = Criterion::with(['standard.program'])
+            ->orderBy('order_index')
+            ->get()
+            ->map(function ($criterion) {
+                return [
+                    'id' => $criterion->id,
+                    'name' => $criterion->name,
+                    'standard' => $criterion->standard?->name ?? 'N/A',
+                    'program' => $criterion->standard?->program?->name ?? 'N/A',
+                ];
+            });
+
+        return Inertia::render('Dashboard/CoordinatorProdi/CriteriaPoints/Create', [
+            'criteria' => $criteria,
+            'selectedCriteriaId' => $request->get('criteria_id'),
+        ]);
+    }
+
+    /**
+     * Store a newly created criteria point.
+     */
+    public function storeCriteriaPoint(StoreCriteriaPointRequest $request): RedirectResponse
+    {
+        $criteriaPoint = CriteriaPoint::create([
+            'criteria_id' => $request->criteria_id,
+            'title' => $request->title,
+            'description' => $request->description,
+            'max_score' => $request->max_score,
+        ]);
+
+        ActivityLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'create',
+            'entity_type' => CriteriaPoint::class,
+            'entity_id' => (string) $criteriaPoint->id,
+            'description' => "Membuat poin kriteria: {$criteriaPoint->title}",
+            'ip_address' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+            'created_at' => now(),
+        ]);
+
+        return redirect('/coordinator-prodi/criteria-points')
+            ->with('success', 'Poin kriteria berhasil dibuat.');
+    }
+
+    /**
+     * Show the form for editing the specified criteria point.
+     */
+    public function editCriteriaPoint(int $id): Response
+    {
+        $criteriaPoint = CriteriaPoint::with(['criterion.standard.program'])->findOrFail($id);
+
+        $criteria = Criterion::with(['standard.program'])
+            ->orderBy('order_index')
+            ->get()
+            ->map(function ($criterion) {
+                return [
+                    'id' => $criterion->id,
+                    'name' => $criterion->name,
+                    'standard' => $criterion->standard?->name ?? 'N/A',
+                    'program' => $criterion->standard?->program?->name ?? 'N/A',
+                ];
+            });
+
+        return Inertia::render('Dashboard/CoordinatorProdi/CriteriaPoints/Edit', [
+            'criteriaPoint' => [
+                'id' => $criteriaPoint->id,
+                'criteria_id' => $criteriaPoint->criteria_id,
+                'title' => $criteriaPoint->title,
+                'description' => $criteriaPoint->description,
+                'max_score' => $criteriaPoint->max_score,
+                'criterion' => [
+                    'name' => $criteriaPoint->criterion?->name ?? 'N/A',
+                    'standard' => $criteriaPoint->criterion?->standard?->name ?? 'N/A',
+                    'program' => $criteriaPoint->criterion?->standard?->program?->name ?? 'N/A',
+                ],
+            ],
+            'criteria' => $criteria,
+        ]);
+    }
+
+    /**
+     * Update the specified criteria point.
+     */
+    public function updateCriteriaPoint(UpdateCriteriaPointRequest $request, int $id): RedirectResponse
+    {
+        $criteriaPoint = CriteriaPoint::findOrFail($id);
+
+        $criteriaPoint->update([
+            'criteria_id' => $request->criteria_id,
+            'title' => $request->title,
+            'description' => $request->description,
+            'max_score' => $request->max_score,
+        ]);
+
+        ActivityLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'update',
+            'entity_type' => CriteriaPoint::class,
+            'entity_id' => (string) $criteriaPoint->id,
+            'description' => "Memperbarui poin kriteria: {$criteriaPoint->title}",
+            'ip_address' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+            'created_at' => now(),
+        ]);
+
+        return redirect('/coordinator-prodi/criteria-points')
+            ->with('success', 'Poin kriteria berhasil diperbarui.');
+    }
+
+    /**
+     * Remove the specified criteria point.
+     */
+    public function destroyCriteriaPoint(int $id): RedirectResponse
+    {
+        $criteriaPoint = CriteriaPoint::findOrFail($id);
+        $title = $criteriaPoint->title;
+
+        // Check if criteria point has evaluations
+        if ($criteriaPoint->evaluations()->count() > 0) {
+            return redirect('/coordinator-prodi/criteria-points')
+                ->with('error', 'Poin kriteria tidak dapat dihapus karena sudah memiliki penilaian.');
+        }
+
+        $criteriaPoint->delete();
+
+        ActivityLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'delete',
+            'entity_type' => CriteriaPoint::class,
+            'entity_id' => (string) $id,
+            'description' => "Menghapus poin kriteria: {$title}",
+            'ip_address' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+            'created_at' => now(),
+        ]);
+
+        return redirect('/coordinator-prodi/criteria-points')
+            ->with('success', 'Poin kriteria berhasil dihapus.');
     }
 
     /**
@@ -842,12 +1021,12 @@ class CoordinatorProdiController extends Controller
             ];
 
             foreach ($standard->criteria as $criterion) {
-                $maxScore = $criterion->criteriaPoints->sum('max_score');
+                $maxScore = $criterion->criteriaPoints->sum('max_score') ?? 0;
 
                 // Get evaluations for this criterion
                 $evaluations = Evaluation::whereHas('assignment', function ($q) use ($criterion, $user) {
                     $q->where('criteria_id', $criterion->id)
-                        ->where('unit_id', $user->unit_id);
+                        ->where('prodi_id', $user->prodi_id);
                 })->get();
 
                 $score = $evaluations->isNotEmpty() ? $evaluations->avg('score') : 0;
@@ -865,7 +1044,7 @@ class CoordinatorProdiController extends Controller
                 ];
 
                 // Calculate weighted score
-                $weightedScore = ($score / $maxScore) * $criterion->weight;
+                $weightedScore = $maxScore > 0 ? ($score / $maxScore) * $criterion->weight : 0;
                 $standardData['total_score'] += $weightedScore;
                 $standardData['max_score'] += $criterion->weight;
 
@@ -1035,7 +1214,7 @@ class CoordinatorProdiController extends Controller
 
                     $evaluations = Evaluation::whereHas('assignment', function ($q) use ($criterion, $user) {
                         $q->where('criteria_id', $criterion->id)
-                            ->where('unit_id', $user->unit_id);
+                            ->where('prodi_id', $user->prodi_id);
                     })->get();
 
                     if ($evaluations->isNotEmpty()) {
@@ -1064,7 +1243,7 @@ class CoordinatorProdiController extends Controller
             $dayStart = $date->copy()->startOfDay();
             $dayEnd = $date->copy()->endOfDay();
 
-            $documentsCount = Document::where('unit_id', $user->unit_id)
+            $documentsCount = Document::where('prodi_id', $user->prodi_id)
                 ->where('year', $year)
                 ->whereBetween('created_at', [$dayStart, $dayEnd])
                 ->count();

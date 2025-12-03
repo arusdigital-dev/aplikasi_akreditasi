@@ -1,24 +1,63 @@
-import assessorAssignments from '@/routes/assessor-assignments';
-import { home, login, register, logout } from '@/routes';
-import dashboard from '@/routes/dashboard';
-
 /**
  * Global route helper function that maps route names to Wayfinder route functions
  */
 export function route(name: string, params?: Record<string, any> | string | number, ...additionalParams: (string | number)[]): string {
-    // Handle object params (for query parameters) - must be done after getting base URL
+    // Check if route needs route parameters (not query parameters)
+    const needsRouteParam = name.includes('.assignments.evaluate') || 
+                           name.includes('.assignments.evaluations.') || 
+                           name.includes('.evaluation-documents.') ||
+                           name.includes('.edit') ||
+                           name.includes('.show') ||
+                           name.includes('.update') ||
+                           name.includes('.delete') ||
+                           name.includes('.download');
+    
+    // Handle object params
     let queryParams: URLSearchParams | null = null;
     let allParams: (string | number)[] = [];
+    let routeParam: string | number | null = null;
     
     if (params && typeof params === 'object' && !Array.isArray(params) && !(params instanceof Date)) {
-        // This is a query parameters object
-        queryParams = new URLSearchParams();
-        Object.entries(params).forEach(([key, value]) => {
-            if (value !== null && value !== undefined && value !== '') {
-                queryParams!.append(key, String(value));
+        if (needsRouteParam) {
+            // Extract route parameter from object
+            routeParam = (params as any).assignmentId || 
+                        (params as any).documentId || 
+                        (params as any).id || 
+                        (params as any)[Object.keys(params)[0]] || 
+                        null;
+            
+            // Remaining params become query parameters
+            const remainingParams: Record<string, any> = {};
+            Object.entries(params).forEach(([key, value]) => {
+                if (key !== 'assignmentId' && key !== 'documentId' && key !== 'id' && value !== routeParam) {
+                    remainingParams[key] = value;
+                }
+            });
+            
+            if (Object.keys(remainingParams).length > 0) {
+                queryParams = new URLSearchParams();
+                Object.entries(remainingParams).forEach(([key, value]) => {
+                    if (value !== null && value !== undefined && value !== '') {
+                        queryParams!.append(key, String(value));
+                    }
+                });
             }
-        });
-        allParams = additionalParams;
+            
+            if (routeParam !== null) {
+                allParams = [routeParam, ...additionalParams];
+            } else {
+                allParams = additionalParams;
+            }
+        } else {
+            // This is a query parameters object
+            queryParams = new URLSearchParams();
+            Object.entries(params).forEach(([key, value]) => {
+                if (value !== null && value !== undefined && value !== '') {
+                    queryParams!.append(key, String(value));
+                }
+            });
+            allParams = additionalParams;
+        }
     } else {
         // Handle legacy params array - ensure params is string or number
         if (params !== undefined && (typeof params === 'string' || typeof params === 'number')) {
@@ -28,18 +67,11 @@ export function route(name: string, params?: Record<string, any> | string | numb
         }
     }
     const routeMap: Record<string, any> = {
-        'assessor-assignments.index': assessorAssignments.index,
-        'assessor-assignments.create': assessorAssignments.create,
-        'assessor-assignments.store': assessorAssignments.store,
-        'assessor-assignments.show': assessorAssignments.show,
-        'assessor-assignments.edit': assessorAssignments.edit,
-        'assessor-assignments.update': assessorAssignments.update,
-        'assessor-assignments.destroy': assessorAssignments.destroy,
-        'home': home,
-        'login': login,
-        'register': register,
-        'logout': logout,
-        'dashboard.index': dashboard?.index,
+        'home': { url: () => '/' },
+        'login': { url: () => '/login' },
+        'register': { url: () => '/register' },
+        'logout': { url: () => '/logout', method: 'post' },
+        'dashboard.index': { url: () => '/dashboard' },
         'statistics.index': { url: () => '/statistics' },
         'employees.index': { url: () => '/employees' },
         'employees.create': { url: () => '/employees/create' },
@@ -112,6 +144,32 @@ export function route(name: string, params?: Record<string, any> | string | numb
             return `/pimpinan/laporan-eksekutif/download/${params.reportType}/${params.format}`;
         }},
         'pimpinan.insight-kesiapan': { url: () => '/pimpinan/insight-kesiapan' },
+        // Admin LPMPP routes
+        'admin-lpmpp.index': { url: () => '/admin-lpmpp' },
+        'admin-lpmpp.progress-summary': { url: () => '/admin-lpmpp/progress-summary' },
+        'admin-lpmpp.assignments.index': { url: () => '/admin-lpmpp/assignments' },
+        'admin-lpmpp.assignments.create': { url: () => '/admin-lpmpp/assignments/create' },
+        'admin-lpmpp.assignments.store': { url: () => '/admin-lpmpp/assignments', method: 'post' },
+        'admin-lpmpp.assignments.edit': { url: (id: string | number) => `/admin-lpmpp/assignments/${id}/edit` },
+        'admin-lpmpp.assignments.update': { url: (id: string | number) => `/admin-lpmpp/assignments/${id}`, method: 'put' },
+        'admin-lpmpp.assignments.assign': { url: (id: string | number) => `/admin-lpmpp/assignments/${id}/assign`, method: 'post' },
+        'admin-lpmpp.assignments.unassign': { url: (id: string | number) => `/admin-lpmpp/assignments/${id}/unassign`, method: 'post' },
+        'admin-lpmpp.statistics.index': { url: () => '/admin-lpmpp/statistics' },
+        'admin-lpmpp.employees.index': { url: () => '/admin-lpmpp/employees' },
+        'admin-lpmpp.employees.show': { url: (id: string | number) => `/admin-lpmpp/employees/${id}` },
+        'admin-lpmpp.employees.create': { url: () => '/admin-lpmpp/employees/create' },
+        'admin-lpmpp.employees.store': { url: () => '/admin-lpmpp/employees', method: 'post' },
+        'admin-lpmpp.employees.edit': { url: (id: string | number) => `/admin-lpmpp/employees/${id}/edit` },
+        'admin-lpmpp.employees.update': { url: (id: string | number) => `/admin-lpmpp/employees/${id}`, method: 'put' },
+        'admin-lpmpp.employees.sync': { url: () => '/admin-lpmpp/employees/sync', method: 'post' },
+        'admin-lpmpp.reports.index': { url: () => '/admin-lpmpp/reports' },
+        'admin-lpmpp.reports.generate': { url: () => '/admin-lpmpp/reports/generate', method: 'post' },
+        'admin-lpmpp.reports.preview': { url: () => '/admin-lpmpp/reports/preview' },
+        'admin-lpmpp.reports.download': { url: (id: string | number) => `/admin-lpmpp/reports/${id}/download` },
+        'admin-lpmpp.notifications.index': { url: () => '/admin-lpmpp/notifications' },
+        'admin-lpmpp.notifications.send-reminder': { url: () => '/admin-lpmpp/notifications/send-reminder', method: 'post' },
+        'admin-lpmpp.notifications.send-broadcast': { url: () => '/admin-lpmpp/notifications/send-broadcast', method: 'post' },
+        'admin-lpmpp.problem-documents.index': { url: () => '/admin-lpmpp/problem-documents' },
     };
 
     const routeFn = routeMap[name];
@@ -123,10 +181,14 @@ export function route(name: string, params?: Record<string, any> | string | numb
 
     // Handle routes with parameters
     if (allParams.length > 0) {
-        // For routes like 'assessor-assignments.show', the param is the ID
-        if (name.includes('assessor-assignments') && (name.includes('.show') || name.includes('.edit') || name.includes('.update') || name.includes('.destroy'))) {
-            // The parameter name is 'assessor_assignment' for assessor-assignments routes
-            return routeFn.url({ assessor_assignment: allParams[0] });
+        // For admin-lpmpp routes with parameters
+        if (name.includes('admin-lpmpp')) {
+            if (name.includes('.assignments.') && (name.includes('.edit') || name.includes('.update') || name.includes('.assign') || name.includes('.unassign'))) {
+                return routeFn.url(allParams[0]);
+            }
+            if (name.includes('.employees.') && (name.includes('.show') || name.includes('.edit') || name.includes('.update'))) {
+                return routeFn.url(allParams[0]);
+            }
         }
         // For employees routes (using direct URL since Wayfinder hasn't generated them yet)
         if (name.includes('employees')) {
@@ -155,11 +217,31 @@ export function route(name: string, params?: Record<string, any> | string | numb
         // For assessor-internal routes with parameters
         if (name.includes('assessor-internal')) {
             if (name.includes('.assignments.evaluate') || name.includes('.assignments.evaluations.') || name.includes('.evaluation-documents.')) {
-                return routeFn.url(allParams[0]);
+                // If params is an object, extract assignmentId or documentId
+                if (params && typeof params === 'object' && !Array.isArray(params) && !(params instanceof Date)) {
+                    const assignmentId = (params as any).assignmentId || (params as any).documentId || (params as any).id;
+                    if (assignmentId !== undefined && assignmentId !== null) {
+                        return routeFn.url(assignmentId);
+                    }
+                }
+                if (allParams.length > 0) {
+                    return routeFn.url(allParams[0]);
+                }
+                return routeFn.url();
             }
         }
         // For other routes, pass the first param directly
-        return routeFn.url(allParams[0]);
+        if (allParams.length > 0) {
+            return routeFn.url(allParams[0]);
+        }
+        // If params is an object, try to extract id or first value
+        if (params && typeof params === 'object' && !Array.isArray(params) && !(params instanceof Date)) {
+            const id = (params as any).id || (params as any).assignmentId || (params as any).documentId || Object.values(params)[0];
+            if (id !== undefined && id !== null) {
+                return routeFn.url(id);
+            }
+        }
+        return routeFn.url();
     }
 
     const baseUrl = routeFn.url();

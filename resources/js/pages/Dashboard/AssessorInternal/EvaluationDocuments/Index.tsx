@@ -10,10 +10,16 @@ interface Document {
     year: number;
     uploaded_at: string;
     criterion: string;
-    unit: string;
-    program: string;
+    fakultas: string;
+    prodi: string;
     evaluation_status: 'pending' | 'completed';
-    assignment_id: number;
+    assignment_id: number | null;
+}
+
+interface Prodi {
+    id: string;
+    name: string;
+    fakultas_name: string;
 }
 
 interface Props {
@@ -22,8 +28,7 @@ interface Props {
         links: any;
         meta: any;
     };
-    programs: Array<{ id: number; name: string }>;
-    units: Array<{ id: string; name: string; type: string }>;
+    prodis: Prodi[];
     categories: string[];
     years: number[];
     stats: {
@@ -32,8 +37,7 @@ interface Props {
         completed: number;
     };
     filters: {
-        program_id?: number;
-        unit_id?: string;
+        prodi_id?: string;
         category?: string;
         year?: number;
         evaluation_status?: string;
@@ -41,10 +45,9 @@ interface Props {
     };
 }
 
-export default function EvaluationDocumentsIndex({ documents, programs, units, categories, years, stats, filters }: Props) {
+export default function EvaluationDocumentsIndex({ documents, prodis, categories, years, stats, filters }: Props) {
     const [search, setSearch] = useState(filters.search || '');
-    const [programId, setProgramId] = useState(filters.program_id?.toString() || '');
-    const [unitId, setUnitId] = useState(filters.unit_id || '');
+    const [prodiId, setProdiId] = useState(filters.prodi_id || '');
     const [category, setCategory] = useState(filters.category || '');
     const [year, setYear] = useState(filters.year?.toString() || '');
     const [evaluationStatus, setEvaluationStatus] = useState(filters.evaluation_status || '');
@@ -52,8 +55,7 @@ export default function EvaluationDocumentsIndex({ documents, programs, units, c
     const handleFilter = () => {
         router.get(route('assessor-internal.evaluation-documents.index'), {
             search: search || undefined,
-            program_id: programId || undefined,
-            unit_id: unitId || undefined,
+            prodi_id: prodiId || undefined,
             category: category || undefined,
             year: year || undefined,
             evaluation_status: evaluationStatus || undefined,
@@ -97,7 +99,7 @@ export default function EvaluationDocumentsIndex({ documents, programs, units, c
 
                 {/* Filters */}
                 <div className="bg-white rounded-lg shadow p-6">
-                    <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                         <div className="md:col-span-2">
                             <label className="block text-sm font-medium text-gray-700 mb-2">Pencarian</label>
                             <input
@@ -109,31 +111,16 @@ export default function EvaluationDocumentsIndex({ documents, programs, units, c
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Program</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Program Studi</label>
                             <select
-                                value={programId}
-                                onChange={(e) => setProgramId(e.target.value)}
+                                value={prodiId}
+                                onChange={(e) => setProdiId(e.target.value)}
                                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
                             >
                                 <option value="">Semua</option>
-                                {programs.map((program) => (
-                                    <option key={program.id} value={program.id}>
-                                        {program.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Unit/Prodi</label>
-                            <select
-                                value={unitId}
-                                onChange={(e) => setUnitId(e.target.value)}
-                                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                            >
-                                <option value="">Semua</option>
-                                {units.map((unit) => (
-                                    <option key={unit.id} value={unit.id}>
-                                        {unit.name}
+                                {prodis.map((prodi) => (
+                                    <option key={prodi.id} value={prodi.id}>
+                                        {prodi.name} ({prodi.fakultas_name})
                                     </option>
                                 ))}
                             </select>
@@ -210,10 +197,10 @@ export default function EvaluationDocumentsIndex({ documents, programs, units, c
                                         Kriteria
                                     </th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Prodi/Fakultas
+                                        Fakultas
                                     </th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Program
+                                        Program Studi
                                     </th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Tanggal Upload
@@ -240,10 +227,10 @@ export default function EvaluationDocumentsIndex({ documents, programs, units, c
                                                 <div className="text-sm text-gray-900">{document.criterion}</div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="text-sm text-gray-900">{document.unit}</div>
+                                                <div className="text-sm text-gray-900">{document.fakultas}</div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="text-sm text-gray-900">{document.program}</div>
+                                                <div className="text-sm font-medium text-gray-900">{document.prodi}</div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="text-sm text-gray-500">
@@ -259,7 +246,7 @@ export default function EvaluationDocumentsIndex({ documents, programs, units, c
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                 <div className="flex items-center justify-end gap-3">
-                                                    {document.evaluation_status === 'completed' && (
+                                                    {document.evaluation_status === 'completed' && document.assignment_id && (
                                                         <Link
                                                             href={route('assessor-internal.evaluation-documents.history', { documentId: document.id })}
                                                             className="text-gray-600 hover:text-gray-900"

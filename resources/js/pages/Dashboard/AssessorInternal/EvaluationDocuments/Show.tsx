@@ -10,9 +10,9 @@ interface Document {
     year: number;
     uploaded_at: string;
     criterion: string;
-    unit: string;
-    program: string;
-    assignment_id: number;
+    fakultas: string;
+    prodi: string;
+    assignment_id: number | null;
 }
 
 interface Criterion {
@@ -116,12 +116,12 @@ export default function EvaluationDocumentsShow({ document, criteria, evaluation
                             <p className="text-sm font-medium text-gray-900">{document.criterion}</p>
                         </div>
                         <div>
-                            <p className="text-sm text-gray-600">Prodi/Fakultas</p>
-                            <p className="text-sm font-medium text-gray-900">{document.unit}</p>
+                            <p className="text-sm text-gray-600">Fakultas</p>
+                            <p className="text-sm font-medium text-gray-900">{document.fakultas}</p>
                         </div>
                         <div>
-                            <p className="text-sm text-gray-600">Program</p>
-                            <p className="text-sm font-medium text-gray-900">{document.program}</p>
+                            <p className="text-sm text-gray-600">Program Studi</p>
+                            <p className="text-sm font-medium text-gray-900">{document.prodi}</p>
                         </div>
                         <div>
                             <p className="text-sm text-gray-600">Kategori</p>
