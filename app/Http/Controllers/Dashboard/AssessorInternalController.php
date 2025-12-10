@@ -16,7 +16,6 @@ use App\Models\EvaluationNoteHistory;
 use App\Models\Prodi;
 use App\Models\Program;
 use App\Models\Unit;
-use Illuminate\Http\BinaryFileResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -165,7 +164,10 @@ class AssessorInternalController extends Controller
                 'prodi.fakultas',
                 'uploadedBy',
             ])
-            ->whereIn('prodi_id', $assessorProdiIds); // Documents from prodi that assessor has assignments for
+            ->whereHas('assignment', function ($q) use ($user) {
+                $q->where('assessor_id', $user->id)
+                    ->whereNull('unassigned_at');
+            });
 
         // Filter by prodi
         if ($request->filled('prodi_id')) {
@@ -182,15 +184,17 @@ class AssessorInternalController extends Controller
             $query->where('year', $request->year);
         }
 
-        // Filter by evaluation status
         if ($request->filled('evaluation_status')) {
             match ($request->evaluation_status) {
-                'pending' => $query->whereDoesntHave('assignment.evaluations', function ($q) use ($user) {
-                    $q->where('assessor_id', $user->id);
-                })->orWhereNull('assignment_id'),
+                'pending' => $query->whereHas('assignment', function ($q) use ($user) {
+                        $q->where('assessor_id', $user->id)
+                        ->whereNull('unassigned_at');
+                    })->whereDoesntHave('assignment.evaluations', function ($q) use ($user) {
+                            $q->where('assessor_id', $user->id);
+                        }),
                 'completed' => $query->whereHas('assignment.evaluations', function ($q) use ($user) {
-                    $q->where('assessor_id', $user->id);
-                }),
+                        $q->where('assessor_id', $user->id);
+                    }),
                 default => null,
             };
         }
@@ -198,13 +202,13 @@ class AssessorInternalController extends Controller
         // Search
         if ($request->filled('search')) {
             $query->where(function ($q) use ($request) {
-                $q->where('file_name', 'like', '%'.$request->search.'%')
-                    ->orWhere('category', 'like', '%'.$request->search.'%')
+                $q->where('file_name', 'like', '%' . $request->search . '%')
+                    ->orWhere('category', 'like', '%' . $request->search . '%')
                     ->orWhereHas('assignment.criterion', function ($subQ) use ($request) {
-                        $subQ->where('name', 'like', '%'.$request->search.'%');
+                        $subQ->where('name', 'like', '%' . $request->search . '%');
                     })
                     ->orWhereHas('prodi', function ($subQ) use ($request) {
-                        $subQ->where('name', 'like', '%'.$request->search.'%');
+                        $subQ->where('name', 'like', '%' . $request->search . '%');
                     });
             });
         }
@@ -281,14 +285,20 @@ class AssessorInternalController extends Controller
                 ];
             });
 
-        $categories = Document::whereIn('prodi_id', $assessorProdiIds)
+        $categories = Document::whereHas('assignment', function ($q) use ($user) {
+            $q->where('assessor_id', $user->id)
+                ->whereNull('unassigned_at');
+        })
             ->distinct()
             ->pluck('category')
             ->filter()
             ->sort()
             ->values();
 
-        $years = Document::whereIn('prodi_id', $assessorProdiIds)
+        $years = Document::whereHas('assignment', function ($q) use ($user) {
+            $q->where('assessor_id', $user->id)
+                ->whereNull('unassigned_at');
+        })
             ->distinct()
             ->pluck('year')
             ->filter()
@@ -296,22 +306,24 @@ class AssessorInternalController extends Controller
             ->values();
 
         // Statistics
-        $totalDocuments = Document::whereIn('prodi_id', $assessorProdiIds)
+        $totalDocuments = Document::whereHas('assignment', function ($q) use ($user) {
+            $q->where('assessor_id', $user->id)
+                ->whereNull('unassigned_at');
+        })
             ->count();
 
-        $pendingEvaluations = Document::whereIn('prodi_id', $assessorProdiIds)
-            ->where(function ($q) use ($user) {
-                $q->whereNull('assignment_id')
-                    ->orWhereDoesntHave('assignment.evaluations', function ($subQ) use ($user) {
-                        $subQ->where('assessor_id', $user->id);
-                    });
+        $pendingEvaluations = Document::whereHas('assignment', function ($q) use ($user) {
+            $q->where('assessor_id', $user->id)
+                ->whereNull('unassigned_at');
+        })
+            ->whereDoesntHave('assignment.evaluations', function ($subQ) use ($user) {
+                $subQ->where('assessor_id', $user->id);
             })
             ->count();
 
-        $completedEvaluations = Document::whereIn('prodi_id', $assessorProdiIds)
-            ->whereHas('assignment.evaluations', function ($q) use ($user) {
-                $q->where('assessor_id', $user->id);
-            })
+        $completedEvaluations = Document::whereHas('assignment.evaluations', function ($q) use ($user) {
+            $q->where('assessor_id', $user->id);
+        })
             ->count();
 
         return Inertia::render('Dashboard/AssessorInternal/EvaluationDocuments/Index', [
@@ -431,7 +443,7 @@ class AssessorInternalController extends Controller
         // Handle evaluation file (PDF)
         if ($request->hasFile('evaluation_file')) {
             $file = $request->file('evaluation_file');
-            $fileName = time().'_'.str()->slug($file->getClientOriginalName());
+            $fileName = time() . '_' . str()->slug($file->getClientOriginalName());
             $filePath = "evaluation-notes/{$user->id}/{$request->assignment_id}/evaluation_{$fileName}";
             Storage::disk('local')->put($filePath, file_get_contents($file->getRealPath()));
             $data['evaluation_file_path'] = $filePath;
@@ -441,7 +453,7 @@ class AssessorInternalController extends Controller
         // Handle recommendation file (Word)
         if ($request->hasFile('recommendation_file')) {
             $file = $request->file('recommendation_file');
-            $fileName = time().'_'.str()->slug($file->getClientOriginalName());
+            $fileName = time() . '_' . str()->slug($file->getClientOriginalName());
             $filePath = "evaluation-notes/{$user->id}/{$request->assignment_id}/recommendation_{$fileName}";
             Storage::disk('local')->put($filePath, file_get_contents($file->getRealPath()));
             $data['recommendation_file_path'] = $filePath;
@@ -452,7 +464,7 @@ class AssessorInternalController extends Controller
         if ($request->hasFile('attachments')) {
             $attachments = [];
             foreach ($request->file('attachments') as $attachment) {
-                $fileName = time().'_'.str()->slug($attachment->getClientOriginalName());
+                $fileName = time() . '_' . str()->slug($attachment->getClientOriginalName());
                 $filePath = "evaluation-notes/{$user->id}/{$request->assignment_id}/attachments/{$fileName}";
                 Storage::disk('local')->put($filePath, file_get_contents($attachment->getRealPath()));
                 $attachments[] = [
@@ -476,8 +488,8 @@ class AssessorInternalController extends Controller
             'changes' => [
                 'status' => $evaluationNote->status,
                 'short_assessment' => $evaluationNote->short_assessment,
-                'has_evaluation_file' => ! empty($evaluationNote->evaluation_file_path),
-                'has_recommendation_file' => ! empty($evaluationNote->recommendation_file_path),
+                'has_evaluation_file' => !empty($evaluationNote->evaluation_file_path),
+                'has_recommendation_file' => !empty($evaluationNote->recommendation_file_path),
                 'attachments_count' => count($evaluationNote->attachments ?? []),
             ],
         ]);
@@ -512,7 +524,7 @@ class AssessorInternalController extends Controller
             }
 
             $file = $request->file('evaluation_file');
-            $fileName = time().'_'.str()->slug($file->getClientOriginalName());
+            $fileName = time() . '_' . str()->slug($file->getClientOriginalName());
             $filePath = "evaluation-notes/{$user->id}/{$evaluationNote->assignment_id}/evaluation_{$fileName}";
             Storage::disk('local')->put($filePath, file_get_contents($file->getRealPath()));
             $data['evaluation_file_path'] = $filePath;
@@ -527,7 +539,7 @@ class AssessorInternalController extends Controller
             }
 
             $file = $request->file('recommendation_file');
-            $fileName = time().'_'.str()->slug($file->getClientOriginalName());
+            $fileName = time() . '_' . str()->slug($file->getClientOriginalName());
             $filePath = "evaluation-notes/{$user->id}/{$evaluationNote->assignment_id}/recommendation_{$fileName}";
             Storage::disk('local')->put($filePath, file_get_contents($file->getRealPath()));
             $data['recommendation_file_path'] = $filePath;
@@ -539,7 +551,7 @@ class AssessorInternalController extends Controller
             $existingAttachments = $evaluationNote->attachments ?? [];
             $newAttachments = [];
             foreach ($request->file('attachments') as $attachment) {
-                $fileName = time().'_'.str()->slug($attachment->getClientOriginalName());
+                $fileName = time() . '_' . str()->slug($attachment->getClientOriginalName());
                 $filePath = "evaluation-notes/{$user->id}/{$evaluationNote->assignment_id}/attachments/{$fileName}";
                 Storage::disk('local')->put($filePath, file_get_contents($attachment->getRealPath()));
                 $newAttachments[] = [
@@ -567,7 +579,7 @@ class AssessorInternalController extends Controller
         $evaluationNote->update($data);
 
         // Create history record if there are changes
-        if (! empty($changes)) {
+        if (!empty($changes)) {
             $version = EvaluationNoteHistory::where('evaluation_note_id', $evaluationNote->id)
                 ->count() + 1;
 
@@ -609,7 +621,7 @@ class AssessorInternalController extends Controller
             default => null,
         };
 
-        if (! $filePath || ! Storage::disk('local')->exists($filePath)) {
+        if (!$filePath || !Storage::disk('local')->exists($filePath)) {
             abort(404, 'File tidak ditemukan.');
         }
 
@@ -647,7 +659,7 @@ class AssessorInternalController extends Controller
                 ->first();
         }
 
-        if (! $evaluationNote) {
+        if (!$evaluationNote) {
             return redirect()->route('assessor-internal.evaluation-documents.index')
                 ->with('error', 'Evaluasi belum dibuat untuk dokumen ini.');
         }
@@ -740,18 +752,18 @@ class AssessorInternalController extends Controller
         if ($request->filled('status')) {
             match ($request->status) {
                 'not_started' => $query->whereDoesntHave('evaluations', function ($q) use ($user) {
-                    $q->where('assessor_id', $user->id);
-                }),
+                        $q->where('assessor_id', $user->id);
+                    }),
                 'in_progress' => $query->whereHas('evaluations', function ($q) use ($user) {
-                    $q->where('assessor_id', $user->id);
-                })->whereDoesntHave('evaluations', function ($q) use ($user) {
-                    $q->where('assessor_id', $user->id)
-                        ->whereNotNull('evaluation_status');
-                }),
+                        $q->where('assessor_id', $user->id);
+                    })->whereDoesntHave('evaluations', function ($q) use ($user) {
+                            $q->where('assessor_id', $user->id)
+                            ->whereNotNull('evaluation_status');
+                        }),
                 'completed' => $query->whereHas('evaluations', function ($q) use ($user) {
-                    $q->where('assessor_id', $user->id)
+                        $q->where('assessor_id', $user->id)
                         ->whereNotNull('evaluation_status');
-                }),
+                    }),
                 default => null,
             };
         }
@@ -947,7 +959,7 @@ class AssessorInternalController extends Controller
                     'uploaded_at' => $doc->created_at?->format('Y-m-d H:i:s'),
                 ];
             }),
-            'criteriaPoints' => $criteriaPoints->isEmpty() 
+            'criteriaPoints' => $criteriaPoints->isEmpty()
                 ? []
                 : $criteriaPoints->map(function ($point) use ($existingEvaluations) {
                     $evaluation = $existingEvaluations->get($point->id);
@@ -1072,7 +1084,7 @@ class AssessorInternalController extends Controller
         }
 
         // Log changes if any
-        if (! empty($changes)) {
+        if (!empty($changes)) {
             // You can create an activity log or evaluation history here
             // For now, we'll just update the assignment status
         }
@@ -1132,7 +1144,7 @@ class AssessorInternalController extends Controller
             $unitName = $assignment->unit?->name ?? 'N/A';
             $key = "{$programName} - {$unitName}";
 
-            if (! isset($programStats[$key])) {
+            if (!isset($programStats[$key])) {
                 $programStats[$key] = [
                     'program' => $programName,
                     'unit' => $unitName,
@@ -1169,8 +1181,8 @@ class AssessorInternalController extends Controller
                 : 0;
 
             // Categorize criteria (weak/strong)
-            $weakCriteria = array_filter($stats['criteria_details'], fn ($c) => $c['score'] < 2.5);
-            $strongCriteria = array_filter($stats['criteria_details'], fn ($c) => $c['score'] >= 3.5);
+            $weakCriteria = array_filter($stats['criteria_details'], fn($c) => $c['score'] < 2.5);
+            $strongCriteria = array_filter($stats['criteria_details'], fn($c) => $c['score'] >= 3.5);
 
             // Radar chart data (Input, Process, Output, Impact)
             // This is simplified - you may need to map criteria to these categories
@@ -1236,7 +1248,7 @@ class AssessorInternalController extends Controller
             $criterionName = $assignment->criterion?->name ?? 'N/A';
             $criterionId = $assignment->criteria_id;
 
-            if (! isset($criterionStats[$criterionId])) {
+            if (!isset($criterionStats[$criterionId])) {
                 $criterionStats[$criterionId] = [
                     'criterion_id' => $criterionId,
                     'criterion_name' => $criterionName,
@@ -1270,10 +1282,10 @@ class AssessorInternalController extends Controller
             if (count($scores) > 0) {
                 // Distribution by BAN-PT scale
                 $distribution = [
-                    'A' => count(array_filter($scores, fn ($s) => $s >= 3.5)),
-                    'B' => count(array_filter($scores, fn ($s) => $s >= 2.5 && $s < 3.5)),
-                    'C' => count(array_filter($scores, fn ($s) => $s >= 1.5 && $s < 2.5)),
-                    'D' => count(array_filter($scores, fn ($s) => $s < 1.5)),
+                    'A' => count(array_filter($scores, fn($s) => $s >= 3.5)),
+                    'B' => count(array_filter($scores, fn($s) => $s >= 2.5 && $s < 3.5)),
+                    'C' => count(array_filter($scores, fn($s) => $s >= 1.5 && $s < 2.5)),
+                    'D' => count(array_filter($scores, fn($s) => $s < 1.5)),
                 ];
 
                 $statistics[] = [
@@ -1292,7 +1304,7 @@ class AssessorInternalController extends Controller
         }
 
         // Sort by problem count (most problematic first)
-        usort($statistics, fn ($a, $b) => $b['problem_count'] <=> $a['problem_count']);
+        usort($statistics, fn($a, $b) => $b['problem_count'] <=> $a['problem_count']);
 
         return Inertia::render('Dashboard/AssessorInternal/Statistics/PerCriterion', [
             'statistics' => $statistics,
@@ -1327,7 +1339,7 @@ class AssessorInternalController extends Controller
         // Get upcoming deadlines (next 7 days)
         $upcomingDeadlines = $assignments
             ->filter(function ($assignment) {
-                if (! $assignment->deadline) {
+                if (!$assignment->deadline) {
                     return false;
                 }
                 $daysUntilDeadline = now()->diffInDays($assignment->deadline, false);
@@ -1465,7 +1477,7 @@ class AssessorInternalController extends Controller
                     // Map criterion to category (simplified - using standard name or criterion name)
                     $category = $this->mapCriterionToCategory($assignment->criterion?->name ?? 'Lainnya');
 
-                    if (! isset($criteriaBreakdown[$category])) {
+                    if (!isset($criteriaBreakdown[$category])) {
                         $criteriaBreakdown[$category] = [];
                     }
 
@@ -1738,7 +1750,7 @@ class AssessorInternalController extends Controller
     /**
      * Download a document.
      */
-    public function downloadDocument(string $id): BinaryFileResponse
+    public function downloadDocument(string $id): \Symfony\Component\HttpFoundation\BinaryFileResponse
     {
         $user = Auth::user();
 
@@ -1751,7 +1763,7 @@ class AssessorInternalController extends Controller
             ->whereNull('unassigned_at')
             ->exists();
 
-        if (! $hasAccess) {
+        if (!$hasAccess) {
             abort(403, 'Anda tidak memiliki akses untuk mengunduh dokumen ini.');
         }
 
