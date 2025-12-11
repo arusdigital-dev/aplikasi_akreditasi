@@ -42,10 +42,16 @@ class CoordinatorProdiController extends Controller
     /**
      * Display the coordinator prodi dashboard.
      */
-    public function index(Request $request): Response
+    public function index(Request $request): Response|RedirectResponse
     {
         $user = Auth::user();
         $year = $request->get('year', Carbon::now()->year);
+
+        // Validate that user has prodi_id
+        if (! $user->prodi_id) {
+            return redirect()->route('home')
+                ->with('error', 'Anda belum terhubung dengan Program Studi. Silakan hubungi administrator.');
+        }
 
         // Get user's accessible programs
         $programs = $user->accessiblePrograms()->get();
