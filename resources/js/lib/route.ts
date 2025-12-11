@@ -110,6 +110,14 @@ export function route(name: string, params?: Record<string, any> | string | numb
         'coordinator-prodi.simulation': { url: () => '/coordinator-prodi/simulation' },
         'coordinator-prodi.criteria-points': { url: () => '/coordinator-prodi/criteria-points' },
         'coordinator-prodi.standards': { url: () => '/coordinator-prodi/standards' },
+        'coordinator-prodi.criteria.index': { url: () => '/coordinator-prodi/criteria' },
+        'coordinator-prodi.criteria.create': { url: () => '/coordinator-prodi/criteria/create' },
+        'coordinator-prodi.criteria.store': { url: () => '/coordinator-prodi/criteria', method: 'post' },
+        'coordinator-prodi.criteria.edit': { url: (id: string | number) => `/coordinator-prodi/criteria/${id}/edit` },
+        'coordinator-prodi.criteria.update': { url: (id: string | number) => `/coordinator-prodi/criteria/${id}`, method: 'put' },
+        'coordinator-prodi.criteria.destroy': { url: (id: string | number) => `/coordinator-prodi/criteria/${id}`, method: 'delete' },
+        'coordinator-prodi.assessor-requests.create': { url: () => '/coordinator-prodi/assessor-requests/create' },
+        'coordinator-prodi.assessor-requests.store': { url: () => '/coordinator-prodi/assessor-requests', method: 'post' },
         'coordinator-prodi.score-recap': { url: () => '/coordinator-prodi/score-recap' },
         'coordinator-prodi.targets.index': { url: () => '/coordinator-prodi/targets' },
         'coordinator-prodi.targets.create': { url: () => '/coordinator-prodi/targets/create' },
@@ -170,6 +178,9 @@ export function route(name: string, params?: Record<string, any> | string | numb
         'admin-lpmpp.notifications.send-reminder': { url: () => '/admin-lpmpp/notifications/send-reminder', method: 'post' },
         'admin-lpmpp.notifications.send-broadcast': { url: () => '/admin-lpmpp/notifications/send-broadcast', method: 'post' },
         'admin-lpmpp.problem-documents.index': { url: () => '/admin-lpmpp/problem-documents' },
+        'admin-lpmpp.assessor-requests.index': { url: () => '/admin-lpmpp/assessor-requests' },
+        'admin-lpmpp.assessor-requests.approve': { url: (id: string | number) => `/admin-lpmpp/assessor-requests/${id}/approve`, method: 'post' },
+        'admin-lpmpp.assessor-requests.reject': { url: (id: string | number) => `/admin-lpmpp/assessor-requests/${id}/reject`, method: 'post' },
     };
 
     const routeFn = routeMap[name];
@@ -258,4 +269,3 @@ export function route(name: string, params?: Record<string, any> | string | numb
 if (typeof window !== 'undefined') {
     (window as any).route = route;
 }
-

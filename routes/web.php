@@ -68,6 +68,12 @@ Route::middleware('auth')->group(function () {
 
         // Download Report
         Route::get('/reports/{report}/download', [AdminLPMPPController::class, 'downloadReport'])->name('reports.download');
+
+        // Assessor Assignment Requests
+        Route::get('/assessor-requests', [AdminLPMPPController::class, 'assessorRequests'])->name('assessor-requests.index');
+        // Assessor Assignment Requests Processing
+        Route::post('/assessor-requests/{id}/approve', [AdminLPMPPController::class, 'approveAssessorRequest'])->name('assessor-requests.approve');
+        Route::post('/assessor-requests/{id}/reject', [AdminLPMPPController::class, 'rejectAssessorRequest'])->name('assessor-requests.reject');
     });
 
     // Notification routes - Accessible by all authenticated users
@@ -154,6 +160,18 @@ Route::middleware('auth')->group(function () {
 
         // Standards
         Route::get('/standards', [CoordinatorProdiController::class, 'standards'])->name('standards');
+
+        // Criteria
+        Route::get('/criteria', [CoordinatorProdiController::class, 'criteria'])->name('criteria.index');
+        Route::get('/criteria/create', [CoordinatorProdiController::class, 'createCriterion'])->name('criteria.create');
+        Route::post('/criteria', [CoordinatorProdiController::class, 'storeCriterion'])->name('criteria.store');
+        Route::get('/criteria/{id}/edit', [CoordinatorProdiController::class, 'editCriterion'])->name('criteria.edit');
+        Route::put('/criteria/{id}', [CoordinatorProdiController::class, 'updateCriterion'])->name('criteria.update');
+        Route::delete('/criteria/{id}', [CoordinatorProdiController::class, 'destroyCriterion'])->name('criteria.destroy');
+
+        // Assessor Requests
+        Route::get('/assessor-requests/create', [CoordinatorProdiController::class, 'createAssessorRequest'])->name('assessor-requests.create');
+        Route::post('/assessor-requests', [CoordinatorProdiController::class, 'storeAssessorRequest'])->name('assessor-requests.store');
 
         // Score recap
         Route::get('/score-recap', [CoordinatorProdiController::class, 'scoreRecap'])->name('score-recap');

@@ -133,7 +133,13 @@ export default function PimpinanIndex({ level, userRole, stats, progressData, fa
     });
 
     // Get unique fakultas for filter
-    const uniqueFakultas = Array.from(new Set(prodiStatus.map((p) => p.fakultas_id).filter(Boolean)));
+    const uniqueFakultas = Array.from(
+        new Set(
+            prodiStatus
+                .map((p) => p.fakultas_id)
+                .filter((id): id is string => !!id)
+        )
+    );
 
     return (
         <DashboardLayout title={getLevelTitle()} subtitle={getLevelSubtitle()}>

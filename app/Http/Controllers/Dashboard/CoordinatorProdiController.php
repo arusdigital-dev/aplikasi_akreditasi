@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\CoordinatorProdi\SendReminderRequest;
 use App\Http\Requests\CoordinatorProdi\SetTargetRequest;
 use App\Http\Requests\CoordinatorProdi\StoreCriteriaPointRequest;
+use App\Http\Requests\CoordinatorProdi\StoreCriterionRequest;
 use App\Http\Requests\CoordinatorProdi\StoreDocumentRequest;
 use App\Http\Requests\CoordinatorProdi\UpdateCriteriaPointRequest;
+use App\Http\Requests\CoordinatorProdi\UpdateCriterionRequest;
 use App\Http\Requests\CoordinatorProdi\UpdateDocumentRequest;
 use App\Models\ActivityLog;
+use App\Models\AssessorAssignmentRequest;
 use App\Models\AkreditasiTarget;
 use App\Models\Assignment;
 use App\Models\CriteriaPoint;
@@ -144,7 +147,7 @@ class CoordinatorProdiController extends Controller
         $prodi = $user->prodi;
 
         // If prodi_id is null, try to find prodi by name from user's name or unit
-        if (! $prodi && $user->name) {
+        if (!$prodi && $user->name) {
             // Extract prodi name from user name (e.g., "Koordinator Teknik Informatika" -> "Teknik Informatika")
             $prodiName = str_replace('Koordinator ', '', $user->name);
             $prodi = \App\Models\Prodi::where('name', $prodiName)->first();
@@ -196,7 +199,7 @@ class CoordinatorProdiController extends Controller
         }
 
         if ($request->filled('search')) {
-            $query->where('file_name', 'like', '%'.$request->search.'%');
+            $query->where('file_name', 'like', '%' . $request->search . '%');
         }
 
         $documents = $query->latest('created_at')
@@ -244,13 +247,13 @@ class CoordinatorProdiController extends Controller
         $file = $request->file('file');
 
         // Validate that user has prodi_id
-        if (! $user->prodi_id) {
+        if (!$user->prodi_id) {
             return redirect()->back()->with('error', 'Anda belum terhubung dengan Program Studi.');
         }
 
         // Generate file path
         $year = $request->year ?? Carbon::now()->year;
-        $fileName = time().'_'.str()->slug($file->getClientOriginalName());
+        $fileName = time() . '_' . str()->slug($file->getClientOriginalName());
         $filePath = "documents/{$user->prodi_id}/{$year}/{$fileName}";
 
         // Store file
@@ -298,7 +301,7 @@ class CoordinatorProdiController extends Controller
 
             // Store new file
             $file = $request->file('file');
-            $fileName = time().'_'.str()->slug($file->getClientOriginalName());
+            $fileName = time() . '_' . str()->slug($file->getClientOriginalName());
             $filePath = "documents/{$user->prodi_id}/{$document->year}/{$fileName}";
 
             Storage::disk('local')->put($filePath, file_get_contents($file->getRealPath()));
@@ -588,7 +591,7 @@ class CoordinatorProdiController extends Controller
         $programs = $user->accessiblePrograms()->get(['id', 'name']);
 
         // If no program_id provided, use first accessible program or show selection
-        if (! $request->filled('program_id')) {
+        if (!$request->filled('program_id')) {
             if ($programs->isEmpty()) {
                 return Inertia::render('Dashboard/CoordinatorProdi/Simulation/Index', [
                     'simulationData' => [
@@ -619,9 +622,12 @@ class CoordinatorProdiController extends Controller
         $programId = $program->id;
         $year = $request->year ?? Carbon::now()->year;
 
-        $program->load(['standards.criteria.criteriaPoints', 'akreditasiTargets' => function ($q) use ($year) {
-            $q->where('year', $year);
-        }]);
+        $program->load([
+            'standards.criteria.criteriaPoints',
+            'akreditasiTargets' => function ($q) use ($year) {
+                $q->where('year', $year);
+            }
+        ]);
 
         $simulationData = [
             'program_id' => $program->id,
@@ -754,8 +760,8 @@ class CoordinatorProdiController extends Controller
 
         if ($filters['search']) {
             $query->where(function ($q) use ($filters) {
-                $q->where('title', 'like', '%'.$filters['search'].'%')
-                    ->orWhere('description', 'like', '%'.$filters['search'].'%');
+                $q->where('title', 'like', '%' . $filters['search'] . '%')
+                    ->orWhere('description', 'like', '%' . $filters['search'] . '%');
             });
         }
 
@@ -779,6 +785,222 @@ class CoordinatorProdiController extends Controller
             'criteria' => $criteria,
             'filters' => $filters,
         ]);
+    }
+
+    /**
+     * Display a listing of criteria for a program/standard.
+     */
+    public function criteria(Request $request): Response
+    {
+        $user = Auth::user();
+
+        $programId = $request->get('program_id');
+        $standardId = $request->get('standard_id');
+
+        $query = Criterion::query()->with(['standard.program']);
+
+        if ($programId) {
+            $query->whereHas('standard', function ($q) use ($programId) {
+                $q->where('program_id', $programId);
+            });
+        }
+
+        if ($standardId) {
+            $query->where('standard_id', $standardId);
+        }
+
+        $criteria = $query->orderBy('order_index')->paginate(15)->withQueryString();
+
+        $programs = $user->accessiblePrograms()->get(['id', 'name']);
+
+        return Inertia::render('Dashboard/CoordinatorProdi/Criteria/Index', [
+            'criteria' => $criteria,
+            'programs' => $programs,
+            'filters' => $request->only(['program_id', 'standard_id']),
+        ]);
+    }
+
+    /**
+     * Show form to create a new criterion.
+     */
+    public function createCriterion(Request $request): Response
+    {
+        $programId = $request->get('program_id');
+
+        $standards = Standard::query()
+            ->when($programId, function ($q) use ($programId) {
+                $q->where('program_id', $programId);
+            })
+            ->get(['id', 'name', 'program_id']);
+
+        $programs = Program::get(['id', 'name']);
+
+        return Inertia::render('Dashboard/CoordinatorProdi/Criteria/Create', [
+            'standards' => $standards,
+            'programs' => $programs,
+            'selectedProgramId' => $programId,
+        ]);
+    }
+
+    /**
+     * Store a new criterion.
+     */
+    public function storeCriterion(StoreCriterionRequest $request): RedirectResponse
+    {
+        $criterion = Criterion::create([
+            'standard_id' => $request->standard_id,
+            'name' => $request->name,
+            'description' => $request->description,
+            'weight' => $request->weight,
+            'order_index' => $request->order_index,
+        ]);
+
+        ActivityLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'create',
+            'entity_type' => Criterion::class,
+            'entity_id' => (string) $criterion->id,
+            'description' => "Membuat kriteria: {$criterion->name}",
+            'ip_address' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+        ]);
+
+        return redirect()->route('coordinator-prodi.standards')
+            ->with('success', 'Kriteria berhasil dibuat.');
+    }
+
+    /**
+     * Show form to edit an existing criterion.
+     */
+    public function editCriterion(string $id): Response
+    {
+        $criterion = Criterion::with('standard.program')->findOrFail($id);
+        $standards = Standard::get(['id', 'name', 'program_id']);
+        $programs = Program::get(['id', 'name']);
+
+        return Inertia::render('Dashboard/CoordinatorProdi/Criteria/Edit', [
+            'criterion' => $criterion,
+            'standards' => $standards,
+            'programs' => $programs,
+        ]);
+    }
+
+    /**
+     * Update an existing criterion.
+     */
+    public function updateCriterion(UpdateCriterionRequest $request, string $id): RedirectResponse
+    {
+        $criterion = Criterion::findOrFail($id);
+
+        $criterion->update($request->only(['standard_id', 'name', 'description', 'weight', 'order_index']));
+
+        ActivityLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'update',
+            'entity_type' => Criterion::class,
+            'entity_id' => (string) $criterion->id,
+            'description' => "Memperbarui kriteria: {$criterion->name}",
+            'ip_address' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+        ]);
+
+        return redirect()->route('coordinator-prodi.standards')
+            ->with('success', 'Kriteria berhasil diperbarui.');
+    }
+
+    /**
+     * Delete a criterion.
+     */
+    public function destroyCriterion(string $id): RedirectResponse
+    {
+        $criterion = Criterion::findOrFail($id);
+
+        $criterion->delete();
+
+        ActivityLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'delete',
+            'entity_type' => Criterion::class,
+            'entity_id' => (string) $criterion->id,
+            'description' => "Menghapus kriteria: {$criterion->name}",
+            'ip_address' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+        ]);
+
+        return redirect()->route('coordinator-prodi.standards')
+            ->with('success', 'Kriteria berhasil dihapus.');
+    }
+
+    /**
+     * Show form to request assessor assignment.
+     */
+    public function createAssessorRequest(Request $request): Response
+    {
+        $user = Auth::user();
+        $programs = $user->accessiblePrograms()->get(['id', 'name']);
+        $criteria = Criterion::with(['standard.program'])->get();
+
+        return Inertia::render('Dashboard/CoordinatorProdi/AssessorRequests/Create', [
+            'programs' => $programs,
+            'criteria' => $criteria,
+        ]);
+    }
+
+    /**
+     * Store assessor assignment request.
+     */
+    public function storeAssessorRequest(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'criteria_id' => ['required', 'integer', 'exists:criteria,id'],
+            'scope_category' => ['nullable', 'string', 'max:255'],
+            'preferred_assessor_email' => ['nullable', 'email'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $user = Auth::user();
+
+        $assessorRequest = AssessorAssignmentRequest::create([
+            'prodi_id' => $user->prodi_id,
+            'criteria_id' => $validated['criteria_id'],
+            'scope_category' => $validated['scope_category'] ?? null,
+            'preferred_assessor_email' => $validated['preferred_assessor_email'] ?? null,
+            'requested_by' => $user->id,
+            'status' => 'pending',
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        $admins = \App\Models\User::whereHas('roles', function ($q) {
+            $q->where('name', 'Admin LPMPP');
+        })->get();
+
+        foreach ($admins as $admin) {
+            $this->notificationService->sendToUser(
+                $admin,
+                \App\Models\NotificationType::PolicyUpdate,
+                'Permintaan Penunjukan Asesor',
+                'Koordinator Prodi mengajukan penunjukan asesor untuk kriteria atau LKPS.',
+                [
+                    'assessor_request_id' => $assessorRequest->id,
+                    'criteria_id' => $assessorRequest->criteria_id,
+                    'scope_category' => $assessorRequest->scope_category,
+                    'preferred_assessor_email' => $assessorRequest->preferred_assessor_email,
+                    'prodi_id' => $assessorRequest->prodi_id,
+                ]
+            );
+        }
+
+        ActivityLog::create([
+            'user_id' => $user->id,
+            'action' => 'create',
+            'entity_type' => AssessorAssignmentRequest::class,
+            'entity_id' => (string) $assessorRequest->id,
+            'description' => 'Mengajukan permintaan penunjukan asesor',
+            'ip_address' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+        ]);
+
+        return redirect()->back()->with('success', 'Permintaan penunjukan asesor dikirim ke Admin LPMPP.');
     }
 
     /**
@@ -936,7 +1158,7 @@ class CoordinatorProdiController extends Controller
         $programs = $user->accessiblePrograms()->get(['id', 'name']);
 
         // If no program_id provided, use first accessible program or show selection
-        if (! $request->filled('program_id')) {
+        if (!$request->filled('program_id')) {
             if ($programs->isEmpty()) {
                 return Inertia::render('Dashboard/CoordinatorProdi/Standards/Index', [
                     'program' => null,
@@ -970,7 +1192,7 @@ class CoordinatorProdiController extends Controller
         $programs = $user->accessiblePrograms()->get(['id', 'name']);
 
         // If no program_id provided, use first accessible program or show selection
-        if (! $request->filled('program_id')) {
+        if (!$request->filled('program_id')) {
             if ($programs->isEmpty()) {
                 return Inertia::render('Dashboard/CoordinatorProdi/ScoreRecap/Index', [
                     'recapData' => [
@@ -1074,8 +1296,8 @@ class CoordinatorProdiController extends Controller
 
         // Chart data
         $scorePerCriteria = collect($recapData['standards'])
-            ->flatMap(fn ($std) => $std['criteria'])
-            ->map(fn ($crit) => [
+            ->flatMap(fn($std) => $std['criteria'])
+            ->map(fn($crit) => [
                 'name' => $crit['criteria_name'],
                 'score' => $crit['score'],
                 'max_score' => $crit['max_score'],
@@ -1083,7 +1305,7 @@ class CoordinatorProdiController extends Controller
             ->toArray();
 
         $scorePerStandard = collect($recapData['standards'])
-            ->map(fn ($std) => [
+            ->map(fn($std) => [
                 'name' => $std['standard_name'],
                 'score' => $std['total_score'],
                 'max_score' => $std['max_score'],

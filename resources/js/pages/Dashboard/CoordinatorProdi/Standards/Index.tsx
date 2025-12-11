@@ -31,11 +31,13 @@ interface Props {
     program: (Program & {
         standards: Standard[];
     }) | null;
-    programs?: Program[];
+    programs?: (Program & { standards?: Standard[] })[];
 }
 
 export default function StandardsIndex({ program, programs = [] }: Props) {
     const [selectedProgram, setSelectedProgram] = useState(program?.id || '');
+    const [newCriterion, setNewCriterion] = useState<{ name: string; description: string; weight: number; order_index: number; standard_id: string }>({ name: '', description: '', weight: 1, order_index: 1, standard_id: '' });
+    const [assessorScope, setAssessorScope] = useState('LKPS');
 
     if (!program && programs.length === 0) {
         return (
@@ -51,7 +53,7 @@ export default function StandardsIndex({ program, programs = [] }: Props) {
     const currentProgram = program || (programs.length > 0 ? programs[0] : null);
 
     return (
-        <DashboardLayout title="Standar & Kriteria Akreditasi" subtitle="Lihat standar dan kriteria akreditasi (Read-only)">
+        <DashboardLayout title="Standar & Kriteria Akreditasi" subtitle="Kelola standar dan kriteria akreditasi">
             <Head title="Standar & Kriteria Akreditasi" />
 
             <div className="space-y-6">
@@ -88,15 +90,13 @@ export default function StandardsIndex({ program, programs = [] }: Props) {
                         </div>
                     )}
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                        <p className="text-sm text-blue-800">
-                            <strong>Info:</strong> Halaman ini hanya untuk melihat standar dan kriteria akreditasi. Tidak dapat diubah.
-                        </p>
+                        <p className="text-sm text-blue-800">Tambahkan kriteria baru pada standar dan ajukan penunjukan asesor.</p>
                     </div>
                 </div>
 
                 {/* Standards */}
                 <div className="space-y-4">
-                    {currentProgram?.standards?.map((standard) => (
+                    {currentProgram?.standards?.map((standard: Standard) => (
                         <div key={standard.id} className="bg-white rounded-lg shadow p-6">
                             <div className="mb-4">
                                 <div className="flex items-center justify-between">
@@ -110,7 +110,7 @@ export default function StandardsIndex({ program, programs = [] }: Props) {
 
                             {/* Criteria */}
                             <div className="space-y-3">
-                                {standard.criteria.map((criterion) => (
+                                {standard.criteria.map((criterion: Criteria) => (
                                     <div
                                         key={criterion.id}
                                         className="border-l-4 border-gray-300 pl-4 py-3 bg-gray-50 rounded-r-lg"
@@ -124,16 +124,85 @@ export default function StandardsIndex({ program, programs = [] }: Props) {
                                             </div>
                                             <div className="ml-4 text-right">
                                                 <span className="text-sm text-gray-500">Bobot: {criterion.weight}</span>
+                                                <div className="mt-2 flex items-center gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={assessorScope}
+                                                        onChange={(e) => setAssessorScope(e.target.value)}
+                                                        placeholder="Kategori (mis. LKPS)"
+                                                        className="border border-gray-300 rounded-md px-2 py-1 text-xs"
+                                                    />
+                                                    <button
+                                                        className="px-2 py-1 bg-blue-600 text-white rounded-md text-xs"
+                                                        onClick={() => {
+                                                            router.post(route('coordinator-prodi.assessor-requests.store'), {
+                                                                criteria_id: criterion.id,
+                                                                scope_category: assessorScope,
+                                                            });
+                                                        }}
+                                                    >
+                                                        Ajukan Asesor
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 ))}
                             </div>
+
+                            <div className="mt-4 border-t pt-4">
+                                <h4 className="text-sm font-medium text-gray-900 mb-2">Tambah Kriteria Baru</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                                    <input
+                                        type="text"
+                                        placeholder="Nama kriteria"
+                                        value={newCriterion.name}
+                                        onChange={(e) => setNewCriterion({ ...newCriterion, name: e.target.value, standard_id: standard.id })}
+                                        className="border border-gray-300 rounded-md px-3 py-2 text-sm"
+                                    />
+                                    <input
+                                        type="number"
+                                        placeholder="Bobot"
+                                        value={newCriterion.weight}
+                                        onChange={(e) => setNewCriterion({ ...newCriterion, weight: parseFloat(e.target.value), standard_id: standard.id })}
+                                        className="border border-gray-300 rounded-md px-3 py-2 text-sm"
+                                    />
+                                    <input
+                                        type="number"
+                                        placeholder="Urutan"
+                                        value={newCriterion.order_index}
+                                        onChange={(e) => setNewCriterion({ ...newCriterion, order_index: parseInt(e.target.value), standard_id: standard.id })}
+                                        className="border border-gray-300 rounded-md px-3 py-2 text-sm"
+                                    />
+                                    <button
+                                        className="px-3 py-2 bg-green-600 text-white rounded-md text-sm"
+                                        onClick={() => {
+                                            if (!newCriterion.name) return;
+                                            router.post(route('coordinator-prodi.criteria.store'), {
+                                                standard_id: standard.id,
+                                                name: newCriterion.name,
+                                                description: newCriterion.description,
+                                                weight: newCriterion.weight,
+                                                order_index: newCriterion.order_index,
+                                            });
+                                        }}
+                                    >
+                                        Simpan Kriteria
+                                    </button>
+                                </div>
+                                <textarea
+                                    placeholder="Deskripsi (opsional)"
+                                    value={newCriterion.description}
+                                    onChange={(e) => setNewCriterion({ ...newCriterion, description: e.target.value, standard_id: standard.id })}
+                                    className="mt-2 w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                                    rows={2}
+                                />
+                            </div>
                         </div>
                     ))}
                 </div>
 
-                {(!currentProgram || currentProgram.standards?.length === 0) && (
+                {(!currentProgram || (currentProgram as any).standards?.length === 0) && (
                     <div className="bg-white rounded-lg shadow p-12 text-center">
                         <p className="text-gray-500">Belum ada standar yang ditetapkan untuk program ini</p>
                     </div>

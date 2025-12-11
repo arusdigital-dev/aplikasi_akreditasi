@@ -17,6 +17,8 @@ use App\Models\ActivityLog;
 use App\Models\AssessorAccessLevel;
 use App\Models\Assignment;
 use App\Models\AssignmentStatus;
+use App\Models\AssessorAssignmentRequest;
+use App\Models\Role;
 use App\Models\Criterion;
 use App\Models\Document;
 use App\Models\Employee;
@@ -84,7 +86,7 @@ class AdminLPMPPController extends Controller
                 }
 
                 return [
-                    'assessor_name' => 'Asesor #'.$assignment->assessor_id, // TODO: Get from User model
+                    'assessor_name' => 'Asesor #' . $assignment->assessor_id, // TODO: Get from User model
                     'program_name' => $assignment->criterion?->standard?->program?->name ?? 'N/A',
                     'criteria_name' => $assignment->criterion?->name ?? 'N/A',
                     'assigned_date' => $assignedDate,
@@ -101,7 +103,7 @@ class AdminLPMPPController extends Controller
                 // Calculate progress based on standards/criteria completion
                 // This is a placeholder - adjust based on your business logic
                 $progress = rand(40, 95); // Placeholder
-
+    
                 return [
                     'name' => $unit->name,
                     'type' => $unit->type->value ?? 'unit',
@@ -173,7 +175,7 @@ class AdminLPMPPController extends Controller
         $kurang = 0;
 
         foreach ($programs as $program) {
-            $totalCriteria = $program->standards->sum(fn ($standard) => $standard->criteria->count());
+            $totalCriteria = $program->standards->sum(fn($standard) => $standard->criteria->count());
             $completedCriteria = $program->standards->sum(function ($standard) {
                 return $standard->criteria->sum(function ($criterion) {
                     return $criterion->assignments->where('status', 'completed')->count();
@@ -261,9 +263,11 @@ class AdminLPMPPController extends Controller
     {
         $fakultas = Unit::where('type', UnitType::Fakultas)
             ->where('is_active', true)
-            ->with(['children' => function ($query) {
-                $query->where('type', UnitType::Prodi)->where('is_active', true);
-            }])
+            ->with([
+                'children' => function ($query) {
+                    $query->where('type', UnitType::Prodi)->where('is_active', true);
+                }
+            ])
             ->get();
 
         return $fakultas->map(function ($fakultas) {
@@ -275,7 +279,7 @@ class AdminLPMPPController extends Controller
 
             foreach ($programs as $program) {
                 $program->load(['standards.criteria.assignments']);
-                $totalCriteria += $program->standards->sum(fn ($standard) => $standard->criteria->count());
+                $totalCriteria += $program->standards->sum(fn($standard) => $standard->criteria->count());
                 $completedCriteria += $program->standards->sum(function ($standard) {
                     return $standard->criteria->sum(function ($criterion) {
                         return $criterion->assignments->where('status', 'completed')->count();
@@ -318,7 +322,7 @@ class AdminLPMPPController extends Controller
         $programs = Program::with(['standards.criteria.assignments'])->get();
 
         return $programs->map(function ($program) {
-            $totalCriteria = $program->standards->sum(fn ($standard) => $standard->criteria->count());
+            $totalCriteria = $program->standards->sum(fn($standard) => $standard->criteria->count());
             $completedCriteria = $program->standards->sum(function ($standard) {
                 return $standard->criteria->sum(function ($criterion) {
                     return $criterion->assignments->where('status', 'completed')->count();
@@ -395,9 +399,11 @@ class AdminLPMPPController extends Controller
             $query->where('id', $unitId);
         }
 
-        $units = $query->with(['assignments' => function ($q) {
-            $q->whereNull('unassigned_at');
-        }])->get();
+        $units = $query->with([
+            'assignments' => function ($q) {
+                $q->whereNull('unassigned_at');
+            }
+        ])->get();
 
         return $units->map(function ($unit) {
             $totalAssignments = $unit->assignments->count();
@@ -627,6 +633,107 @@ class AdminLPMPPController extends Controller
     }
 
     /**
+     * Approve assessor assignment request.
+     */
+    public function approveAssessorRequest(string $id, NotificationService $notificationService): RedirectResponse
+    {
+        $requestModel = AssessorAssignmentRequest::findOrFail($id);
+
+        $assessor = null;
+        if ($requestModel->preferred_assessor_email) {
+            $assessor = User::where('email', $requestModel->preferred_assessor_email)->first();
+            if (!$assessor) {
+                $assessor = User::create([
+                    'name' => preg_replace('/@.*/', '', $requestModel->preferred_assessor_email),
+                    'email' => $requestModel->preferred_assessor_email,
+                    'is_active' => true,
+                    'password' => str()->random(12),
+                ]);
+            } else {
+                if (!$assessor->is_active) {
+                    $assessor->update(['is_active' => true]);
+                }
+            }
+
+            $role = Role::where('name', 'Asesor Internal')->first();
+            if ($role && !$assessor->roles()->where('roles.id', $role->id)->exists()) {
+                $assessor->roles()->attach($role->id);
+            }
+        }
+
+        $assignment = Assignment::create([
+            'criteria_id' => $requestModel->criteria_id,
+            'prodi_id' => $requestModel->prodi_id,
+            'assessor_id' => $assessor?->id,
+            'assigned_date' => Carbon::today(),
+            'deadline' => Carbon::today()->addDays(30),
+            'access_level' => \App\Models\AssessorAccessLevel::ReadWrite,
+            'status' => AssignmentStatus::Pending,
+            'notes' => $requestModel->notes,
+        ]);
+
+        if ($requestModel->scope_category) {
+            Document::where('prodi_id', $requestModel->prodi_id)
+                ->where('category', $requestModel->scope_category)
+                ->update(['assignment_id' => $assignment->id]);
+        }
+
+        $requestModel->update([
+            'status' => 'approved',
+            'processed_by' => Auth::id(),
+            'processed_at' => now(),
+        ]);
+
+        if ($assessor) {
+            $notificationService->sendToUser(
+                $assessor,
+                NotificationType::PolicyUpdate,
+                'Penugasan Asesor',
+                'Anda ditugaskan untuk melakukan penilaian pada kriteria/LKPS.',
+                [
+                    'assignment_id' => $assignment->id,
+                    'criteria_id' => $assignment->criteria_id,
+                ]
+            );
+        }
+
+        if ($requestModel->requester) {
+            $notificationService->sendToUser(
+                $requestModel->requester,
+                NotificationType::PolicyUpdate,
+                'Permintaan Disetujui',
+                'Permintaan penunjukan asesor Anda telah disetujui.',
+                [
+                    'assessor_request_id' => $requestModel->id,
+                    'assignment_id' => $assignment->id,
+                ]
+            );
+        }
+
+        $this->logActivity('approved', 'assessor_request', $requestModel->id, 'Menyetujui permintaan penunjukan asesor');
+
+        return redirect()->back()->with('success', 'Permintaan penunjukan asesor disetujui.');
+    }
+
+    /**
+     * Reject assessor assignment request.
+     */
+    public function rejectAssessorRequest(string $id): RedirectResponse
+    {
+        $requestModel = AssessorAssignmentRequest::findOrFail($id);
+
+        $requestModel->update([
+            'status' => 'rejected',
+            'processed_by' => Auth::id(),
+            'processed_at' => now(),
+        ]);
+
+        $this->logActivity('rejected', 'assessor_request', $requestModel->id, 'Menolak permintaan penunjukan asesor');
+
+        return redirect()->back()->with('success', 'Permintaan penunjukan asesor ditolak.');
+    }
+
+    /**
      * Display statistics.
      */
     public function statistics(Request $request): Response
@@ -667,11 +774,11 @@ class AdminLPMPPController extends Controller
             ->with(['assignment.criterion.standard.program', 'assignment.unit', 'criteriaPoint']);
 
         if ($programId) {
-            $query->whereHas('assignment.criterion.standard', fn ($q) => $q->where('program_id', $programId));
+            $query->whereHas('assignment.criterion.standard', fn($q) => $q->where('program_id', $programId));
         }
 
         if ($unitId) {
-            $query->whereHas('assignment', fn ($q) => $q->where('unit_id', $unitId));
+            $query->whereHas('assignment', fn($q) => $q->where('unit_id', $unitId));
         }
 
         $evaluations = $query->get();
@@ -827,7 +934,7 @@ class AdminLPMPPController extends Controller
         $this->logActivity('synced', 'employee', null, "Sinkronisasi data pegawai dari {$source}");
 
         return redirect()->route('admin-lpmpp.employees.index')
-            ->with('success', "Sinkronisasi selesai. Created: {$created}, Updated: {$updated}, Errors: ".count($errors));
+            ->with('success', "Sinkronisasi selesai. Created: {$created}, Updated: {$updated}, Errors: " . count($errors));
     }
 
     /**
@@ -839,7 +946,7 @@ class AdminLPMPPController extends Controller
 
         // Add file_url to each report
         $reports->getCollection()->transform(function ($report) {
-            $report->file_url = Storage::disk('public')->url($report->file_path);
+            $report->file_url = Storage::url($report->file_path);
 
             return $report;
         });
@@ -857,7 +964,7 @@ class AdminLPMPPController extends Controller
         $type = $request->type;
         $programId = $request->program_id ?: null;
         $unitId = $request->unit_id ?: null;
-        $format = $request->format;
+        $format = $request->input('format');
 
         \Log::info('Starting report generation', [
             'type' => $type,
@@ -869,7 +976,7 @@ class AdminLPMPPController extends Controller
         try {
             // Ensure reports directory exists
             $reportsDir = storage_path('app/public/reports');
-            if (! is_dir($reportsDir)) {
+            if (!is_dir($reportsDir)) {
                 \File::makeDirectory($reportsDir, 0755, true);
             }
 
@@ -885,8 +992,8 @@ class AdminLPMPPController extends Controller
             }
 
             // Verify file was created
-            $fullPath = storage_path('app/public/'.$filePath);
-            if (! file_exists($fullPath)) {
+            $fullPath = storage_path('app/public/' . $filePath);
+            if (!file_exists($fullPath)) {
                 throw new \RuntimeException("File tidak ditemukan di path: {$filePath}");
             }
 
@@ -906,7 +1013,7 @@ class AdminLPMPPController extends Controller
 
             $this->logActivity('generated', 'report', $report->id, "Membuat laporan {$type} format {$format}");
 
-            $downloadUrl = Storage::disk('public')->url($filePath);
+            $downloadUrl = Storage::url($filePath);
 
             \Log::info('Report generated successfully', [
                 'report_id' => $report->id,
@@ -926,9 +1033,9 @@ class AdminLPMPPController extends Controller
 
             return redirect()->back()
                 ->withInput()
-                ->with('error', 'Gagal membuat laporan: '.$e->getMessage());
+                ->with('error', 'Gagal membuat laporan: ' . $e->getMessage());
         } catch (\Exception $e) {
-            \Log::error('Error generating report: '.$e->getMessage(), [
+            \Log::error('Error generating report: ' . $e->getMessage(), [
                 'type' => $type,
                 'format' => $format,
                 'program_id' => $programId,
@@ -938,7 +1045,7 @@ class AdminLPMPPController extends Controller
 
             return redirect()->back()
                 ->withInput()
-                ->with('error', 'Gagal membuat laporan: '.$e->getMessage().'. Silakan coba lagi atau hubungi administrator.');
+                ->with('error', 'Gagal membuat laporan: ' . $e->getMessage() . '. Silakan coba lagi atau hubungi administrator.');
         }
     }
 
@@ -949,9 +1056,9 @@ class AdminLPMPPController extends Controller
     {
         $report = Report::findOrFail($id);
 
-        $filePath = storage_path('app/public/'.$report->file_path);
+        $filePath = storage_path('app/public/' . $report->file_path);
 
-        if (! file_exists($filePath)) {
+        if (!file_exists($filePath)) {
             return redirect()->route('admin-lpmpp.reports.index')
                 ->with('error', 'File laporan tidak ditemukan.');
         }
@@ -973,7 +1080,7 @@ class AdminLPMPPController extends Controller
 
         return response()->file($filePath, [
             'Content-Type' => $mimeType,
-            'Content-Disposition' => $disposition.'; filename="'.basename($report->file_path).'"',
+            'Content-Disposition' => $disposition . '; filename="' . basename($report->file_path) . '"',
         ]);
     }
 
@@ -1041,7 +1148,9 @@ class AdminLPMPPController extends Controller
 
             if ($user && $assignment->deadline) {
                 $daysUntilDeadline = now()->diffInDays($assignment->deadline, false);
-                $deadlineDate = $assignment->deadline->format('d F Y');
+                $deadlineDate = $assignment->deadline instanceof Carbon
+                    ? $assignment->deadline->format('d F Y')
+                    : Carbon::parse($assignment->deadline)->format('d F Y');
                 $documentName = $assignment->criterion->name ?? 'Dokumen';
 
                 $notificationService->sendDeadlineReminder(
@@ -1064,7 +1173,9 @@ class AdminLPMPPController extends Controller
             foreach ($assignments as $assignment) {
                 if ($assignment->assessor && $assignment->deadline) {
                     $daysUntilDeadline = now()->diffInDays($assignment->deadline, false);
-                    $deadlineDate = $assignment->deadline->format('d F Y');
+                    $deadlineDate = $assignment->deadline instanceof Carbon
+                        ? $assignment->deadline->format('d F Y')
+                        : Carbon::parse($assignment->deadline)->format('d F Y');
                     $documentName = $assignment->criterion->name ?? 'Dokumen';
 
                     if ($daysUntilDeadline <= $daysBefore) {
@@ -1095,7 +1206,7 @@ class AdminLPMPPController extends Controller
         $type = NotificationType::from($request->type);
         $title = $request->title;
         $message = $request->message;
-        $channels = array_map(fn ($ch) => NotificationChannel::from($ch), $request->channels);
+        $channels = array_map(fn($ch) => NotificationChannel::from($ch), $request->channels);
 
         $units = Unit::whereIn('id', $unitIds)->get();
 
@@ -1146,7 +1257,7 @@ class AdminLPMPPController extends Controller
 
         // Filter wrong format in collection
         if ($request->has('issue_type') && $request->get('issue_type') === 'wrong_format') {
-            $documents = $documents->filter(fn ($doc) => $doc->hasWrongFormat());
+            $documents = $documents->filter(fn($doc) => $doc->hasWrongFormat());
         }
 
         // Set issue_type for each document
@@ -1155,7 +1266,7 @@ class AdminLPMPPController extends Controller
                 $doc->issue_type = 'expired';
             } elseif ($doc->hasWrongFormat()) {
                 $doc->issue_type = 'wrong_format';
-            } elseif (! $doc->validated_at) {
+            } elseif (!$doc->validated_at) {
                 $doc->issue_type = 'not_validated';
             } else {
                 $doc->issue_type = 'other';
@@ -1169,8 +1280,41 @@ class AdminLPMPPController extends Controller
 
         return Inertia::render('Dashboard/AdminLPMPP/ProblemDocuments/Index', [
             'documents' => $documents->values(),
-            'grouped' => $grouped->map(fn ($group) => $group->values())->toArray(),
+            'grouped' => $grouped->map(fn($group) => $group->values())->toArray(),
             'filters' => $request->only(['issue_type', 'unit_id', 'program_id']),
+        ]);
+    }
+
+    /**
+     * List assessor assignment requests.
+     */
+    public function assessorRequests(Request $request): Response
+    {
+        $query = AssessorAssignmentRequest::query()
+            ->with(['prodi.fakultas', 'criterion.standard.program', 'requester']);
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $requests = $query->latest()->paginate(15)->withQueryString()->through(function ($req) {
+            return [
+                'id' => $req->id,
+                'prodi' => $req->prodi?->name ?? 'N/A',
+                'fakultas' => $req->prodi?->fakultas?->name ?? 'N/A',
+                'criterion' => $req->criterion?->name ?? 'N/A',
+                'program' => $req->criterion?->standard?->program?->name ?? 'N/A',
+                'scope_category' => $req->scope_category,
+                'preferred_assessor_email' => $req->preferred_assessor_email,
+                'requested_by' => $req->requester?->name ?? 'N/A',
+                'status' => $req->status,
+                'created_at' => $req->created_at?->format('Y-m-d H:i:s'),
+            ];
+        });
+
+        return Inertia::render('Dashboard/AdminLPMPP/AssessorRequests/Index', [
+            'requests' => $requests,
+            'filters' => $request->only(['status']),
         ]);
     }
 
