@@ -169,25 +169,14 @@ Route::middleware('auth')->group(function () {
         // Dashboard
         Route::get('/', [CoordinatorProdiController::class, 'index'])->name('index');
 
-        // Manajemen Dokumen
-        Route::get('/documents', [CoordinatorProdiController::class, 'documents'])->name('documents.index');
-        Route::get('/documents/create', [CoordinatorProdiController::class, 'createDocument'])->name('documents.create');
+        // Manajemen Dokumen (upload dilakukan di LKPS)
         Route::post('/documents', [CoordinatorProdiController::class, 'storeDocument'])->name('documents.store');
         Route::put('/documents/{id}', [CoordinatorProdiController::class, 'updateDocument'])->name('documents.update');
         Route::delete('/documents/{id}', [CoordinatorProdiController::class, 'deleteDocument'])->name('documents.delete');
         Route::get('/documents/{id}/download', [CoordinatorProdiController::class, 'downloadDocument'])->name('documents.download');
 
-        // Laporan Kelengkapan Dokumen
-        Route::get('/reports/completeness', [CoordinatorProdiController::class, 'documentCompleteness'])->name('reports.completeness');
-
         // Notifikasi
         Route::post('/notifications/reminder', [CoordinatorProdiController::class, 'sendReminder'])->name('notifications.reminder');
-
-        // Statistik Penilaian
-        Route::get('/statistics/assessment', [CoordinatorProdiController::class, 'assessmentStatistics'])->name('statistics.assessment');
-
-        // Simulasi Penilaian
-        Route::get('/simulation', [CoordinatorProdiController::class, 'simulation'])->name('simulation');
 
         // Poin Kriteria
         Route::get('/criteria-points', [CoordinatorProdiController::class, 'criteriaPoints'])->name('criteria-points.index');
@@ -211,9 +200,6 @@ Route::middleware('auth')->group(function () {
         // Permintaan Asesor
         Route::get('/assessor-requests/create', [CoordinatorProdiController::class, 'createAssessorRequest'])->name('assessor-requests.create');
         Route::post('/assessor-requests', [CoordinatorProdiController::class, 'storeAssessorRequest'])->name('assessor-requests.store');
-
-        // Rekap Nilai
-        Route::get('/score-recap', [CoordinatorProdiController::class, 'scoreRecap'])->name('score-recap');
 
         // Target Akreditasi
         Route::get('/targets', [CoordinatorProdiController::class, 'getTargets'])->name('targets.index');

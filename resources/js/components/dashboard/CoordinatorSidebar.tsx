@@ -31,6 +31,12 @@ export default function CoordinatorSidebar() {
                     !currentUrl.startsWith('/coordinator-prodi/documents/create'));
         }
 
+        // Cek khusus untuk route akreditasi (semua route akreditasi dianggap aktif untuk simulasi)
+        if (href === '/coordinator-prodi/accreditation/simulation') {
+            return currentUrl.startsWith('/coordinator-prodi/accreditation') &&
+                !currentUrl.startsWith('/coordinator-prodi/accreditation/lkps');
+        }
+
         // Cek umum untuk route lainnya
         return currentUrl.startsWith(href);
     };
@@ -73,97 +79,11 @@ export default function CoordinatorSidebar() {
                     Dashboard
                 </Link>
 
-
-                {/* Section: Laporan & Analisis */}
-                <div className="pt-4">
-                    <div className="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                        Laporan & Analisis
-                    </div>
-                    <Link
-                        href={route('coordinator-prodi.reports.completeness')}
-                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
-                            isActive('/coordinator-prodi/reports')
-                                ? 'text-white bg-blue-600 font-medium'
-                                : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        Laporan Kelengkapan
-                    </Link>
-                    <Link
-                        href={route('coordinator-prodi.simulation')}
-                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
-                            isActive('/coordinator-prodi/simulation')
-                                ? 'text-white bg-blue-600 font-medium'
-                                : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                        </svg>
-                        Simulasi Penilaian
-                    </Link>
-                    <Link
-                        href={route('coordinator-prodi.score-recap')}
-                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
-                            isActive('/coordinator-prodi/score-recap')
-                                ? 'text-white bg-blue-600 font-medium'
-                                : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                        </svg>
-                        Rekap Nilai
-                    </Link>
-                    <Link
-                        href={route('coordinator-prodi.statistics.assessment')}
-                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
-                            isActive('/coordinator-prodi/statistics')
-                                ? 'text-white bg-blue-600 font-medium'
-                                : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                        </svg>
-                        Statistik Penilaian
-                    </Link>
-                </div>
-
                 {/* Section: Akreditasi */}
                 <div className="pt-4">
                     <div className="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                         Akreditasi
                     </div>
-                    <Link
-                        href={route('coordinator-prodi.accreditation.cycles')}
-                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
-                            isActive('/coordinator-prodi/accreditation')
-                                ? 'text-white bg-blue-600 font-medium'
-                                : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Siklus Akreditasi
-                    </Link>
-                    <Link
-                        href={route('coordinator-prodi.accreditation.criteria')}
-                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
-                            isActive('/coordinator-prodi/accreditation/criteria')
-                                ? 'text-white bg-blue-600 font-medium'
-                                : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                        </svg>
-                        Kriteria & Matriks
-                    </Link>
                     <Link
                         href={route('coordinator-prodi.accreditation.simulation')}
                         className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${

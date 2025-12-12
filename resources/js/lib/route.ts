@@ -98,8 +98,6 @@ export function route(name: string, params?: Record<string, any> | string | numb
         'documents.issues.reject': { url: (id: string | number) => `/documents/issues/${id}/reject`, method: 'post' },
         // Coordinator Prodi routes
         'coordinator-prodi.index': { url: () => '/coordinator-prodi' },
-        'coordinator-prodi.documents.index': { url: () => '/coordinator-prodi/documents' },
-        'coordinator-prodi.documents.create': { url: () => '/coordinator-prodi/documents/create' },
         'coordinator-prodi.documents.store': { url: () => '/coordinator-prodi/documents', method: 'post' },
         'coordinator-prodi.documents.update': { url: (id: string | number) => `/coordinator-prodi/documents/${id}`, method: 'put' },
         'coordinator-prodi.documents.delete': { url: (id: string | number) => `/coordinator-prodi/documents/${id}`, method: 'delete' },

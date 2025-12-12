@@ -143,111 +143,6 @@ class CoordinatorProdiController extends Controller
     }
 
     /**
-     * Show the form for creating a new document.
-     */
-    public function createDocument(Request $request): Response
-    {
-        $user = $this->getUser();
-
-        // Load prodi and fakultas relationships
-        $user->load(['prodi.fakultas']);
-
-        // Get user's prodi
-        $prodi = $user->prodi;
-
-        // If prodi_id is null, try to find prodi by name from user's name or unit
-        if (! $prodi && $user->name) {
-            // Extract prodi name from user name (e.g., "Koordinator Teknik Informatika" -> "Teknik Informatika")
-            $prodiName = str_replace('Koordinator ', '', $user->name);
-            $prodi = \App\Models\Prodi::where('name', $prodiName)->first();
-
-            // If found, update user's prodi_id
-            if ($prodi) {
-                $user->update(['prodi_id' => $prodi->id]);
-                $user->load(['prodi.fakultas']);
-                $prodi = $user->prodi;
-            }
-        }
-
-        return Inertia::render('Dashboard/CoordinatorProdi/Documents/Create', [
-            'prodi' => $prodi ? [
-                'id' => $prodi->id,
-                'name' => $prodi->name,
-                'fakultas_name' => $prodi->fakultas?->name ?? 'N/A',
-            ] : null,
-        ]);
-    }
-
-    /**
-     * Display documents list with filters.
-     */
-    public function documents(Request $request): Response
-    {
-        $user = $this->getUser();
-
-        $query = Document::where('prodi_id', $user->prodi_id)
-            ->with(['program', 'prodi', 'uploadedBy', 'validatedBy', 'rejectedBy']);
-
-        // Filters
-        if ($request->filled('category')) {
-            $query->where('category', $request->category);
-        }
-
-        if ($request->filled('status')) {
-            match ($request->status) {
-                'validated' => $query->whereNotNull('validated_at'),
-                'pending' => $query->whereNull('validated_at')->whereNull('rejected_by'),
-                'rejected' => $query->whereNotNull('rejected_by'),
-                'expired' => $query->where('expired_at', '<', Carbon::now()),
-                default => null,
-            };
-        }
-
-        if ($request->filled('year')) {
-            $query->where('year', $request->year);
-        }
-
-        if ($request->filled('search')) {
-            $query->where('file_name', 'like', '%'.$request->search.'%');
-        }
-
-        $documents = $query->latest('created_at')
-            ->paginate($request->get('per_page', 15))
-            ->withQueryString();
-
-        // Get filter options
-        $categories = Document::where('prodi_id', $user->prodi_id)
-            ->distinct()
-            ->pluck('category')
-            ->filter()
-            ->sort()
-            ->values();
-
-        $years = Document::where('prodi_id', $user->prodi_id)
-            ->distinct()
-            ->pluck('year')
-            ->filter()
-            ->sortDesc()
-            ->values();
-
-        // Statistics
-        $stats = [
-            'total' => Document::where('prodi_id', $user->prodi_id)->count(),
-            'validated' => Document::where('prodi_id', $user->prodi_id)->whereNotNull('validated_at')->count(),
-            'pending' => Document::where('prodi_id', $user->prodi_id)->whereNull('validated_at')->whereNull('rejected_by')->count(),
-            'rejected' => Document::where('prodi_id', $user->prodi_id)->whereNotNull('rejected_by')->count(),
-        ];
-
-        return Inertia::render('Dashboard/CoordinatorProdi/Documents/Index', [
-            'documents' => $documents,
-            'categories' => $categories,
-            'years' => $years,
-            'stats' => $stats,
-            'filters' => $request->only(['category', 'status', 'year', 'search']),
-        ]);
-    }
-
-    /**
      * Store a new document.
      */
     public function storeDocument(StoreDocumentRequest $request): RedirectResponse
@@ -288,7 +183,8 @@ class CoordinatorProdiController extends Controller
 
         $document = Document::create($documentData);
 
-        return redirect()->route('coordinator-prodi.documents.index')
+        // Redirect back to LKPS or dashboard
+        return redirect()->back()
             ->with('success', 'Dokumen berhasil diupload.');
     }
 
@@ -1657,31 +1553,11 @@ class CoordinatorProdiController extends Controller
 
     /**
      * Display accreditation cycles page.
+     * Redirects to simulation page with cycles tab.
      */
     public function accreditationCycles(Request $request): Response|RedirectResponse
     {
-        $user = $this->getUser();
-        $prodi = $user->prodi;
-
-        if (! $prodi) {
-            return redirect()->route('coordinator-prodi.index')
-                ->with('error', 'Prodi tidak ditemukan');
-        }
-
-        $cycles = \App\Models\AccreditationCycle::where('prodi_id', $prodi->id)
-            ->with('lam:id,name,code')
-            ->orderBy('created_at', 'desc')
-            ->get();
-
-        $activeCycle = $cycles->firstWhere('status', 'active');
-        $lams = \App\Models\LAM::where('is_active', true)->get(['id', 'name', 'code']);
-
-        return Inertia::render('Dashboard/CoordinatorProdi/Accreditation/Cycles', [
-            'cycles' => $cycles,
-            'activeCycle' => $activeCycle,
-            'lams' => $lams,
-            'prodi' => $prodi,
-        ]);
+        return redirect()->route('coordinator-prodi.accreditation.simulation');
     }
 
     /**
@@ -1715,7 +1591,7 @@ class CoordinatorProdiController extends Controller
             'notes' => $validated['notes'] ?? null,
         ]);
 
-        return redirect()->route('coordinator-prodi.accreditation.cycles')
+        return redirect()->route('coordinator-prodi.accreditation.simulation', $cycle->id)
             ->with('success', 'Siklus akreditasi berhasil dibuat');
     }
 
@@ -1875,14 +1751,17 @@ class CoordinatorProdiController extends Controller
             ];
         }
 
-        return Inertia::render('Dashboard/CoordinatorProdi/Accreditation/Criteria', [
-            'cycle' => $cycleData,
-            'scores' => $scores,
-        ]);
+        // Redirect to simulation page with criteria tab
+        if ($cycleId) {
+            return redirect()->route('coordinator-prodi.accreditation.simulation', $cycleId);
+        }
+
+        return redirect()->route('coordinator-prodi.accreditation.simulation');
     }
 
     /**
      * Display accreditation simulation page.
+     * This page now includes Cycles, Criteria, and Simulation features.
      */
     public function accreditationSimulation(Request $request, ?string $cycleId = null): Response|RedirectResponse
     {
@@ -1894,6 +1773,16 @@ class CoordinatorProdiController extends Controller
                 ->with('error', 'Prodi tidak ditemukan');
         }
 
+        // Get all cycles for Cycles tab
+        $cycles = \App\Models\AccreditationCycle::where('prodi_id', $prodi->id)
+            ->with('lam:id,name,code')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $activeCycle = $cycles->firstWhere('status', 'active');
+        $lams = \App\Models\LAM::where('is_active', true)->get(['id', 'name', 'code']);
+
+        // Get selected cycle
         $cycle = null;
         if ($cycleId) {
             $cycle = \App\Models\AccreditationCycle::where('prodi_id', $prodi->id)
@@ -1901,23 +1790,97 @@ class CoordinatorProdiController extends Controller
                 ->find($cycleId);
 
             if (! $cycle) {
-                return redirect()->route('coordinator-prodi.accreditation.cycles')
+                return redirect()->route('coordinator-prodi.accreditation.simulation')
                     ->with('error', 'Siklus akreditasi tidak ditemukan atau tidak memiliki akses.');
             }
         } else {
-            // Jika tidak ada cycleId, cari active cycle atau cycle terbaru
-            $cycle = \App\Models\AccreditationCycle::where('prodi_id', $prodi->id)
-                ->where('status', 'active')
-                ->with('lam')
-                ->first();
+            // Jika tidak ada cycleId, gunakan active cycle atau cycle terbaru
+            $cycle = $activeCycle ?? $cycles->first();
+        }
 
-            // Jika tidak ada active cycle, ambil cycle terbaru
-            if (! $cycle) {
-                $cycle = \App\Models\AccreditationCycle::where('prodi_id', $prodi->id)
-                    ->with('lam')
-                    ->orderBy('created_at', 'desc')
-                    ->first();
-            }
+        // Get cycle data for Criteria tab (with LAM structure)
+        $cycleData = null;
+        $scores = [];
+        if ($cycle) {
+            $cycle->load([
+                'lam' => function ($query) {
+                    $query->with([
+                        'standards' => function ($query) {
+                            $query->orderBy('order_index');
+                        },
+                        'standards.elements' => function ($query) {
+                            $query->orderBy('order_index');
+                        },
+                        'standards.elements.indicators' => function ($query) {
+                            $query->orderBy('order_index');
+                        },
+                        'standards.elements.indicators.rubrics' => function ($query) {
+                            $query->orderBy('score', 'desc');
+                        },
+                    ]);
+                },
+            ]);
+
+            // Get indicator scores
+            $scores = \App\Models\ProdiIndicatorScore::where('accreditation_cycle_id', $cycle->id)
+                ->get()
+                ->keyBy('lam_indicator_id')
+                ->map(function ($score) {
+                    return [
+                        'id' => $score->id,
+                        'lam_indicator_id' => $score->lam_indicator_id,
+                        'score' => $score->score,
+                        'notes' => $score->notes,
+                        'source' => $score->source,
+                    ];
+                })
+                ->toArray();
+
+            // Format cycle data untuk frontend
+            $cycleData = [
+                'id' => $cycle->id,
+                'cycle_name' => $cycle->cycle_name,
+                'lam' => [
+                    'id' => $cycle->lam->id,
+                    'name' => $cycle->lam->name,
+                    'standards' => $cycle->lam->standards->map(function ($standard) {
+                        return [
+                            'id' => $standard->id,
+                            'code' => $standard->code,
+                            'name' => $standard->name,
+                            'description' => $standard->description,
+                            'weight' => $standard->weight,
+                            'elements' => $standard->elements->map(function ($element) {
+                                return [
+                                    'id' => $element->id,
+                                    'code' => $element->code,
+                                    'name' => $element->name,
+                                    'description' => $element->description,
+                                    'weight' => $element->weight,
+                                    'indicators' => $element->indicators->map(function ($indicator) {
+                                        return [
+                                            'id' => $indicator->id,
+                                            'code' => $indicator->code,
+                                            'name' => $indicator->name,
+                                            'description' => $indicator->description,
+                                            'document_requirements' => $indicator->document_requirements,
+                                            'weight' => $indicator->weight,
+                                            'rubrics' => $indicator->rubrics->map(function ($rubric) {
+                                                return [
+                                                    'id' => $rubric->id,
+                                                    'score' => $rubric->score,
+                                                    'label' => $rubric->label,
+                                                    'description' => $rubric->description,
+                                                ];
+                                            })->values()->all(),
+                                        ];
+                                    })->values()->all(),
+                                ];
+                            })->values()->all(),
+                        ];
+                    })->values()->all(),
+                ],
+            ];
         }
 
         // Get simulation history (jika cycle ada)
@@ -1948,6 +1911,15 @@ class CoordinatorProdiController extends Controller
         }
 
         return Inertia::render('Dashboard/CoordinatorProdi/Accreditation/Simulation', [
+            // Cycles tab data
+            'cycles' => $cycles,
+            'activeCycle' => $activeCycle,
+            'lams' => $lams,
+            'prodi' => $prodi,
+            // Criteria tab data
+            'cycleData' => $cycleData,
+            'scores' => $scores,
+            // Simulation tab data
             'cycle' => $cycle,
             'simulations' => $simulations,
             'currentScores' => $currentScores,
@@ -1993,29 +1965,43 @@ class CoordinatorProdiController extends Controller
             }
         }
 
-        // Get documents for this cycle (jika cycle ada)
-        $documents = [];
+        // Get documents for this prodi
+        // Menampilkan dokumen yang memiliki cycle_id sesuai cycle yang dipilih,
+        // atau dokumen prodi yang belum memiliki cycle_id (untuk memungkinkan user memilih cycle)
+        $documentsQuery = Document::where('prodi_id', $prodi->id)
+            ->with('uploadedBy:id,name');
+
         if ($cycle) {
-            $documents = Document::where('accreditation_cycle_id', $cycle->id)
-                ->with('uploadedBy:id,name')
-                ->orderBy('created_at', 'desc')
-                ->get()
-                ->map(function ($document) {
-                    return [
-                        'id' => $document->id,
-                        'file_name' => $document->file_name,
-                        'file_type' => $document->file_type,
-                        'file_size' => $document->file_size,
-                        'category' => $document->category,
-                        'year' => $document->year,
-                        'uploaded_by' => $document->uploadedBy ? [
-                            'name' => $document->uploadedBy->name,
-                        ] : null,
-                        'created_at' => $document->created_at,
-                    ];
-                })
-                ->toArray();
+            // Jika ada cycle yang dipilih, tampilkan dokumen dengan cycle_id tersebut
+            // atau dokumen yang belum memiliki cycle_id
+            $documentsQuery->where(function ($q) use ($cycle) {
+                $q->where('accreditation_cycle_id', $cycle->id)
+                    ->orWhereNull('accreditation_cycle_id');
+            });
+        } else {
+            // Jika tidak ada cycle, tampilkan semua dokumen prodi
+            $documentsQuery->whereNull('accreditation_cycle_id');
         }
+
+        $documents = $documentsQuery
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($document) {
+                return [
+                    'id' => $document->id,
+                    'file_name' => $document->file_name,
+                    'file_type' => $document->file_type,
+                    'file_size' => $document->file_size,
+                    'category' => $document->category,
+                    'year' => $document->year,
+                    'accreditation_cycle_id' => $document->accreditation_cycle_id,
+                    'uploaded_by' => $document->uploadedBy ? [
+                        'name' => $document->uploadedBy->name,
+                    ] : null,
+                    'created_at' => $document->created_at,
+                ];
+            })
+            ->toArray();
 
         // Format prodi data untuk frontend
         $prodiData = null;

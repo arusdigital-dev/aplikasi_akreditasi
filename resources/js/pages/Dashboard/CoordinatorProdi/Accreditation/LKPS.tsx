@@ -92,6 +92,16 @@ export default function AccreditationLKPS({ cycle, documents, prodi }: Props) {
         return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
     };
 
+    const handleDelete = (documentId: string) => {
+        if (confirm('Apakah Anda yakin ingin menghapus dokumen ini?')) {
+            router.delete(route('coordinator-prodi.documents.delete', documentId), {
+                onSuccess: () => {
+                    router.reload();
+                },
+            });
+        }
+    };
+
     // Jika tidak ada cycle, tampilkan pesan error
     if (!cycle) {
         return (
@@ -188,12 +198,13 @@ export default function AccreditationLKPS({ cycle, documents, prodi }: Props) {
                                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ukuran</th>
                                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Diupload Oleh</th>
                                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tanggal</th>
+                                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Aksi</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="bg-white divide-y divide-gray-200">
                                                 {documents.length === 0 ? (
                                                     <tr>
-                                                        <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                                                        <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                                                             Belum ada dokumen. Upload dokumen untuk melengkapi LKPS.
                                                         </td>
                                                     </tr>
@@ -221,6 +232,22 @@ export default function AccreditationLKPS({ cycle, documents, prodi }: Props) {
                                                                 <span className="text-sm text-gray-600">
                                                                     {new Date(doc.created_at).toLocaleDateString('id-ID')}
                                                                 </span>
+                                                            </td>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                                <div className="flex items-center justify-end gap-3">
+                                                                    <a
+                                                                        href={route('coordinator-prodi.documents.download', doc.id)}
+                                                                        className="text-blue-600 hover:text-blue-900"
+                                                                    >
+                                                                        Download
+                                                                    </a>
+                                                                    <button
+                                                                        onClick={() => handleDelete(doc.id)}
+                                                                        className="text-red-600 hover:text-red-900"
+                                                                    >
+                                                                        Hapus
+                                                                    </button>
+                                                                </div>
                                                             </td>
                                                         </tr>
                                                     ))

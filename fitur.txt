@@ -243,3 +243,78 @@ Any program study
 
 Any accreditation body
 to onboard into one unified platform with zero custom coding per LAM.
+
+Buat Target Akreditasi oleh Koor. Prodi
+Buat Standar/Kriteria oleh Koor. Prodi
+Buat Poin Kriteria oleh Koor.Prodi
+Lihat Simulasi Penilaian oleh Koor. Prodi
+Ajukan Assessor ke Admin LPMMP oleh Koor Prodi, 
+
+
+I. MATRIKS PENILAIAN KINERJA PROGRAM STUDI
+Jenis No.
+Urut
+No.
+Butir
+Bobot
+dari
+400
+Elemen Penilaian LAM Deskriptor Sangat baik = 4 Baik = 3 Cukup = 2 Kurang = 1
+I 1. A 4 Kondisi Eksternal Kemampuan UPPS dalam
+menganalisis aspekaspek dalam lingkungan
+makro dan lingkungan
+mikro yang relevan dan
+dapat mempengaruhi
+eksistensi dan
+pengembangan PS
+maupun UPPS.
+UPPS mampu
+menganalisis aspekaspek dalam
+lingkungan makro
+dan lingkungan mikro
+yang relevan dan
+dapat mempengaruhi
+eksistensi dan
+pengembangan PS
+maupun UPPS
+dengan sangat
+komprehensif.
+UPPS mampu
+menganalisis
+aspek-aspek dalam
+lingkungan makro
+dan lingkungan
+mikro yang relevan
+dan dapat
+mempengaruhi
+eksistensi dan
+pengembangan PS
+maupun UPPS
+secara
+komprehensif.
+UPPS mampu
+menganalisis
+aspek-aspek dalam
+lingkungan makro
+dan lingkungan
+mikro yang relevan
+dan dapat
+mempengaruhi
+eksistensi dan
+pengembangan PS
+maupun UPPS
+secara cukup
+komprehensif.
+UPPS mampu
+menganalisis
+aspek-aspek dalam
+lingkungan makro
+dan lingkungan
+mikro yang relevan
+dan dapat
+mempengaruhi
+eksistensi dan
+pengembangan PS
+maupun UPPS
+secara kurang
+komprehensif.
