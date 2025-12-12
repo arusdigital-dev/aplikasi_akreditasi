@@ -15,10 +15,9 @@ use App\Http\Requests\AdminLPMPP\UpdateAssignmentRequest;
 use App\Http\Requests\AdminLPMPP\UpdateEmployeeRequest;
 use App\Models\ActivityLog;
 use App\Models\AssessorAccessLevel;
+use App\Models\AssessorAssignmentRequest;
 use App\Models\Assignment;
 use App\Models\AssignmentStatus;
-use App\Models\AssessorAssignmentRequest;
-use App\Models\Role;
 use App\Models\Criterion;
 use App\Models\Document;
 use App\Models\Employee;
@@ -30,6 +29,7 @@ use App\Models\NotificationType;
 use App\Models\Prodi;
 use App\Models\Program;
 use App\Models\Report;
+use App\Models\Role;
 use App\Models\Unit;
 use App\Models\UnitType;
 use App\Models\User;
@@ -40,12 +40,20 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class AdminLPMPPController extends Controller
 {
+    public function __construct(
+        private NotificationService $notificationService
+    ) {
+        //
+    }
+
     /**
      * Display the admin LPMPP dashboard.
      */
@@ -86,7 +94,7 @@ class AdminLPMPPController extends Controller
                 }
 
                 return [
-                    'assessor_name' => 'Asesor #' . $assignment->assessor_id, // TODO: Get from User model
+                    'assessor_name' => 'Asesor #'.$assignment->assessor_id, // TODO: Get from User model
                     'program_name' => $assignment->criterion?->standard?->program?->name ?? 'N/A',
                     'criteria_name' => $assignment->criterion?->name ?? 'N/A',
                     'assigned_date' => $assignedDate,
@@ -103,7 +111,7 @@ class AdminLPMPPController extends Controller
                 // Calculate progress based on standards/criteria completion
                 // This is a placeholder - adjust based on your business logic
                 $progress = rand(40, 95); // Placeholder
-    
+
                 return [
                     'name' => $unit->name,
                     'type' => $unit->type->value ?? 'unit',
@@ -175,7 +183,7 @@ class AdminLPMPPController extends Controller
         $kurang = 0;
 
         foreach ($programs as $program) {
-            $totalCriteria = $program->standards->sum(fn($standard) => $standard->criteria->count());
+            $totalCriteria = $program->standards->sum(fn ($standard) => $standard->criteria->count());
             $completedCriteria = $program->standards->sum(function ($standard) {
                 return $standard->criteria->sum(function ($criterion) {
                     return $criterion->assignments->where('status', 'completed')->count();
@@ -266,7 +274,7 @@ class AdminLPMPPController extends Controller
             ->with([
                 'children' => function ($query) {
                     $query->where('type', UnitType::Prodi)->where('is_active', true);
-                }
+                },
             ])
             ->get();
 
@@ -279,7 +287,7 @@ class AdminLPMPPController extends Controller
 
             foreach ($programs as $program) {
                 $program->load(['standards.criteria.assignments']);
-                $totalCriteria += $program->standards->sum(fn($standard) => $standard->criteria->count());
+                $totalCriteria += $program->standards->sum(fn ($standard) => $standard->criteria->count());
                 $completedCriteria += $program->standards->sum(function ($standard) {
                     return $standard->criteria->sum(function ($criterion) {
                         return $criterion->assignments->where('status', 'completed')->count();
@@ -322,7 +330,7 @@ class AdminLPMPPController extends Controller
         $programs = Program::with(['standards.criteria.assignments'])->get();
 
         return $programs->map(function ($program) {
-            $totalCriteria = $program->standards->sum(fn($standard) => $standard->criteria->count());
+            $totalCriteria = $program->standards->sum(fn ($standard) => $standard->criteria->count());
             $completedCriteria = $program->standards->sum(function ($standard) {
                 return $standard->criteria->sum(function ($criterion) {
                     return $criterion->assignments->where('status', 'completed')->count();
@@ -402,7 +410,7 @@ class AdminLPMPPController extends Controller
         $units = $query->with([
             'assignments' => function ($q) {
                 $q->whereNull('unassigned_at');
-            }
+            },
         ])->get();
 
         return $units->map(function ($unit) {
@@ -633,6 +641,21 @@ class AdminLPMPPController extends Controller
     }
 
     /**
+     * Hapus penugasan asesor secara permanen.
+     */
+    public function destroyAssignment(string $id): RedirectResponse
+    {
+        $assignment = Assignment::findOrFail($id);
+
+        $this->logActivity('deleted', 'assignment', $assignment->id, 'Menghapus penugasan asesor');
+
+        $assignment->delete();
+
+        return redirect()->route('admin-lpmpp.assignments.index')
+            ->with('success', 'Penugasan berhasil dihapus.');
+    }
+
+    /**
      * Approve assessor assignment request.
      */
     public function approveAssessorRequest(string $id, NotificationService $notificationService): RedirectResponse
@@ -642,7 +665,7 @@ class AdminLPMPPController extends Controller
         $assessor = null;
         if ($requestModel->preferred_assessor_email) {
             $assessor = User::where('email', $requestModel->preferred_assessor_email)->first();
-            if (!$assessor) {
+            if (! $assessor) {
                 $assessor = User::create([
                     'name' => preg_replace('/@.*/', '', $requestModel->preferred_assessor_email),
                     'email' => $requestModel->preferred_assessor_email,
@@ -650,13 +673,13 @@ class AdminLPMPPController extends Controller
                     'password' => str()->random(12),
                 ]);
             } else {
-                if (!$assessor->is_active) {
+                if (! $assessor->is_active) {
                     $assessor->update(['is_active' => true]);
                 }
             }
 
             $role = Role::where('name', 'Asesor Internal')->first();
-            if ($role && !$assessor->roles()->where('roles.id', $role->id)->exists()) {
+            if ($role && ! $assessor->roles()->where('roles.id', $role->id)->exists()) {
                 $assessor->roles()->attach($role->id);
             }
         }
@@ -667,7 +690,7 @@ class AdminLPMPPController extends Controller
             'assessor_id' => $assessor?->id,
             'assigned_date' => Carbon::today(),
             'deadline' => Carbon::today()->addDays(30),
-            'access_level' => \App\Models\AssessorAccessLevel::ReadWrite,
+            'access_level' => AssessorAccessLevel::ReadWrite,
             'status' => AssignmentStatus::Pending,
             'notes' => $requestModel->notes,
         ]);
@@ -774,11 +797,11 @@ class AdminLPMPPController extends Controller
             ->with(['assignment.criterion.standard.program', 'assignment.unit', 'criteriaPoint']);
 
         if ($programId) {
-            $query->whereHas('assignment.criterion.standard', fn($q) => $q->where('program_id', $programId));
+            $query->whereHas('assignment.criterion.standard', fn ($q) => $q->where('program_id', $programId));
         }
 
         if ($unitId) {
-            $query->whereHas('assignment', fn($q) => $q->where('unit_id', $unitId));
+            $query->whereHas('assignment', fn ($q) => $q->where('unit_id', $unitId));
         }
 
         $evaluations = $query->get();
@@ -934,7 +957,7 @@ class AdminLPMPPController extends Controller
         $this->logActivity('synced', 'employee', null, "Sinkronisasi data pegawai dari {$source}");
 
         return redirect()->route('admin-lpmpp.employees.index')
-            ->with('success', "Sinkronisasi selesai. Created: {$created}, Updated: {$updated}, Errors: " . count($errors));
+            ->with('success', "Sinkronisasi selesai. Created: {$created}, Updated: {$updated}, Errors: ".count($errors));
     }
 
     /**
@@ -966,7 +989,7 @@ class AdminLPMPPController extends Controller
         $unitId = $request->unit_id ?: null;
         $format = $request->input('format');
 
-        \Log::info('Starting report generation', [
+        Log::info('Starting report generation', [
             'type' => $type,
             'format' => $format,
             'program_id' => $programId,
@@ -976,8 +999,8 @@ class AdminLPMPPController extends Controller
         try {
             // Ensure reports directory exists
             $reportsDir = storage_path('app/public/reports');
-            if (!is_dir($reportsDir)) {
-                \File::makeDirectory($reportsDir, 0755, true);
+            if (! is_dir($reportsDir)) {
+                File::makeDirectory($reportsDir, 0755, true);
             }
 
             $filePath = match ($type) {
@@ -992,12 +1015,12 @@ class AdminLPMPPController extends Controller
             }
 
             // Verify file was created
-            $fullPath = storage_path('app/public/' . $filePath);
-            if (!file_exists($fullPath)) {
+            $fullPath = storage_path('app/public/'.$filePath);
+            if (! file_exists($fullPath)) {
                 throw new \RuntimeException("File tidak ditemukan di path: {$filePath}");
             }
 
-            \Log::info('Report file created', ['file_path' => $filePath, 'full_path' => $fullPath]);
+            Log::info('Report file created', ['file_path' => $filePath, 'full_path' => $fullPath]);
 
             $reportData = [
                 'file_path' => $filePath,
@@ -1015,7 +1038,7 @@ class AdminLPMPPController extends Controller
 
             $downloadUrl = Storage::url($filePath);
 
-            \Log::info('Report generated successfully', [
+            Log::info('Report generated successfully', [
                 'report_id' => $report->id,
                 'download_url' => $downloadUrl,
             ]);
@@ -1025,7 +1048,7 @@ class AdminLPMPPController extends Controller
                 ->with('download_url', $downloadUrl)
                 ->with('report_id', $report->id);
         } catch (\InvalidArgumentException $e) {
-            \Log::warning('Invalid argument in report generation', [
+            Log::warning('Invalid argument in report generation', [
                 'error' => $e->getMessage(),
                 'type' => $type,
                 'format' => $format,
@@ -1033,9 +1056,9 @@ class AdminLPMPPController extends Controller
 
             return redirect()->back()
                 ->withInput()
-                ->with('error', 'Gagal membuat laporan: ' . $e->getMessage());
+                ->with('error', 'Gagal membuat laporan: '.$e->getMessage());
         } catch (\Exception $e) {
-            \Log::error('Error generating report: ' . $e->getMessage(), [
+            Log::error('Error generating report: '.$e->getMessage(), [
                 'type' => $type,
                 'format' => $format,
                 'program_id' => $programId,
@@ -1045,20 +1068,20 @@ class AdminLPMPPController extends Controller
 
             return redirect()->back()
                 ->withInput()
-                ->with('error', 'Gagal membuat laporan: ' . $e->getMessage() . '. Silakan coba lagi atau hubungi administrator.');
+                ->with('error', 'Gagal membuat laporan: '.$e->getMessage().'. Silakan coba lagi atau hubungi administrator.');
         }
     }
 
     /**
      * Download report file.
      */
-    public function downloadReport(string $id): \Symfony\Component\HttpFoundation\BinaryFileResponse|\Illuminate\Http\RedirectResponse
+    public function downloadReport(string $id): BinaryFileResponse|RedirectResponse
     {
         $report = Report::findOrFail($id);
 
-        $filePath = storage_path('app/public/' . $report->file_path);
+        $filePath = storage_path('app/public/'.$report->file_path);
 
-        if (!file_exists($filePath)) {
+        if (! file_exists($filePath)) {
             return redirect()->route('admin-lpmpp.reports.index')
                 ->with('error', 'File laporan tidak ditemukan.');
         }
@@ -1080,7 +1103,7 @@ class AdminLPMPPController extends Controller
 
         return response()->file($filePath, [
             'Content-Type' => $mimeType,
-            'Content-Disposition' => $disposition . '; filename="' . basename($report->file_path) . '"',
+            'Content-Disposition' => $disposition.'; filename="'.basename($report->file_path).'"',
         ]);
     }
 
@@ -1206,7 +1229,7 @@ class AdminLPMPPController extends Controller
         $type = NotificationType::from($request->type);
         $title = $request->title;
         $message = $request->message;
-        $channels = array_map(fn($ch) => NotificationChannel::from($ch), $request->channels);
+        $channels = array_map(fn ($ch) => NotificationChannel::from($ch), $request->channels);
 
         $units = Unit::whereIn('id', $unitIds)->get();
 
@@ -1257,7 +1280,7 @@ class AdminLPMPPController extends Controller
 
         // Filter wrong format in collection
         if ($request->has('issue_type') && $request->get('issue_type') === 'wrong_format') {
-            $documents = $documents->filter(fn($doc) => $doc->hasWrongFormat());
+            $documents = $documents->filter(fn ($doc) => $doc->hasWrongFormat());
         }
 
         // Set issue_type for each document
@@ -1266,7 +1289,7 @@ class AdminLPMPPController extends Controller
                 $doc->issue_type = 'expired';
             } elseif ($doc->hasWrongFormat()) {
                 $doc->issue_type = 'wrong_format';
-            } elseif (!$doc->validated_at) {
+            } elseif (! $doc->validated_at) {
                 $doc->issue_type = 'not_validated';
             } else {
                 $doc->issue_type = 'other';
@@ -1280,7 +1303,7 @@ class AdminLPMPPController extends Controller
 
         return Inertia::render('Dashboard/AdminLPMPP/ProblemDocuments/Index', [
             'documents' => $documents->values(),
-            'grouped' => $grouped->map(fn($group) => $group->values())->toArray(),
+            'grouped' => $grouped->map(fn ($group) => $group->values())->toArray(),
             'filters' => $request->only(['issue_type', 'unit_id', 'program_id']),
         ]);
     }
@@ -1319,6 +1342,97 @@ class AdminLPMPPController extends Controller
     }
 
     /**
+     * Display accreditation assessor assignments page.
+     */
+    public function accreditationAssessorAssignments(Request $request): Response
+    {
+        $query = \App\Models\AccreditationAssessorAssignment::query()
+            ->with(['accreditationCycle.prodi.fakultas', 'accreditationCycle.lam', 'assessor', 'assignedBy']);
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->filled('cycle_id')) {
+            $query->where('accreditation_cycle_id', $request->cycle_id);
+        }
+
+        $assignments = $query->latest('assigned_date')->paginate(20);
+
+        // Get all accreditation cycles for filter
+        $cycles = \App\Models\AccreditationCycle::with(['prodi', 'lam'])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        // Get users with Assessor External role
+        $externalAssessors = User::whereHas('roles', function ($q) {
+            $q->where('name', 'Asesor Eksternal');
+        })->get(['id', 'name', 'email']);
+
+        return Inertia::render('Dashboard/AdminLPMPP/AccreditationAssessorAssignments/Index', [
+            'assignments' => $assignments,
+            'cycles' => $cycles,
+            'externalAssessors' => $externalAssessors,
+            'filters' => $request->only(['status', 'cycle_id']),
+        ]);
+    }
+
+    /**
+     * Assign external assessor to accreditation cycle.
+     */
+    public function assignAccreditationAssessor(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'accreditation_cycle_id' => 'required|uuid|exists:accreditation_cycles,id',
+            'assessor_id' => 'required|uuid|exists:users,id',
+            'deadline' => 'nullable|date|after_or_equal:today',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        // Check if assessor has External Assessor role
+        $assessor = User::findOrFail($validated['assessor_id']);
+        if (! $assessor->roles->contains('name', 'Asesor Eksternal')) {
+            return redirect()->back()->with('error', 'User yang dipilih bukan Asesor Eksternal');
+        }
+
+        // Check if assignment already exists
+        $existing = \App\Models\AccreditationAssessorAssignment::where('accreditation_cycle_id', $validated['accreditation_cycle_id'])
+            ->where('assessor_id', $validated['assessor_id'])
+            ->where('status', '!=', 'cancelled')
+            ->first();
+
+        if ($existing) {
+            return redirect()->back()->with('error', 'Asesor sudah di-assign ke siklus akreditasi ini');
+        }
+
+        \App\Models\AccreditationAssessorAssignment::create([
+            'accreditation_cycle_id' => $validated['accreditation_cycle_id'],
+            'assessor_id' => $validated['assessor_id'],
+            'assigned_by' => Auth::id(),
+            'assigned_date' => now(),
+            'deadline' => $validated['deadline'] ?? null,
+            'status' => 'pending',
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        // Send notification to assessor
+        $cycle = \App\Models\AccreditationCycle::with('prodi')->findOrFail($validated['accreditation_cycle_id']);
+        $this->notificationService->sendToUser(
+            $assessor,
+            NotificationType::AssessorAssignment,
+            'Penugasan Asesor Eksternal',
+            "Anda telah di-assign sebagai Asesor Eksternal untuk siklus akreditasi: {$cycle->cycle_name} - {$cycle->prodi->name}",
+            [
+                'accreditation_cycle_id' => $cycle->id,
+                'cycle_name' => $cycle->cycle_name,
+            ],
+            [NotificationChannel::Email, NotificationChannel::InApp]
+        );
+
+        return redirect()->back()->with('success', 'Asesor eksternal berhasil di-assign');
+    }
+
+    /**
      * Log activity.
      */
     private function logActivity(string $action, string $entityType, ?string $entityId, string $description): void
@@ -1335,5 +1449,4 @@ class AdminLPMPPController extends Controller
             'created_at' => now(),
         ]);
     }
-
 }

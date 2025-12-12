@@ -124,6 +124,11 @@ export function route(name: string, params?: Record<string, any> | string | numb
         'coordinator-prodi.targets.store': { url: () => '/coordinator-prodi/targets', method: 'post' },
         'coordinator-prodi.targets.update': { url: (id: string | number) => `/coordinator-prodi/targets/${id}`, method: 'put' },
         'coordinator-prodi.targets.delete': { url: (id: string | number) => `/coordinator-prodi/targets/${id}`, method: 'delete' },
+        // Accreditation routes
+        'coordinator-prodi.accreditation.cycles': { url: () => '/coordinator-prodi/accreditation/cycles' },
+        'coordinator-prodi.accreditation.criteria': { url: (cycleId?: string | number) => cycleId ? `/coordinator-prodi/accreditation/criteria/${cycleId}` : '/coordinator-prodi/accreditation/criteria' },
+        'coordinator-prodi.accreditation.simulation': { url: (cycleId?: string | number) => cycleId ? `/coordinator-prodi/accreditation/simulation/${cycleId}` : '/coordinator-prodi/accreditation/simulation' },
+        'coordinator-prodi.accreditation.lkps': { url: (cycleId?: string | number) => cycleId ? `/coordinator-prodi/accreditation/lkps/${cycleId}` : '/coordinator-prodi/accreditation/lkps' },
         // Assessor Internal routes
         'assessor-internal.index': { url: () => '/assessor-internal' },
         'assessor-internal.dashboard': { url: () => '/assessor-internal' },
@@ -181,6 +186,14 @@ export function route(name: string, params?: Record<string, any> | string | numb
         'admin-lpmpp.assessor-requests.index': { url: () => '/admin-lpmpp/assessor-requests' },
         'admin-lpmpp.assessor-requests.approve': { url: (id: string | number) => `/admin-lpmpp/assessor-requests/${id}/approve`, method: 'post' },
         'admin-lpmpp.assessor-requests.reject': { url: (id: string | number) => `/admin-lpmpp/assessor-requests/${id}/reject`, method: 'post' },
+        // Alias untuk assessor-assignments (menggunakan route admin-lpmpp.assignments)
+        'assessor-assignments.index': { url: () => '/admin-lpmpp/assignments' },
+        'assessor-assignments.create': { url: () => '/admin-lpmpp/assignments/create' },
+        'assessor-assignments.store': { url: () => '/admin-lpmpp/assignments', method: 'post' },
+        'assessor-assignments.show': { url: (id: string | number) => `/admin-lpmpp/assignments/${id}` },
+        'assessor-assignments.edit': { url: (id: string | number) => `/admin-lpmpp/assignments/${id}/edit` },
+        'assessor-assignments.update': { url: (id: string | number) => `/admin-lpmpp/assignments/${id}`, method: 'put' },
+        'assessor-assignments.destroy': { url: (id: string | number) => `/admin-lpmpp/assignments/${id}`, method: 'delete' },
     };
 
     const routeFn = routeMap[name];
@@ -198,6 +211,12 @@ export function route(name: string, params?: Record<string, any> | string | numb
                 return routeFn.url(allParams[0]);
             }
             if (name.includes('.employees.') && (name.includes('.show') || name.includes('.edit') || name.includes('.update'))) {
+                return routeFn.url(allParams[0]);
+            }
+        }
+        // For assessor-assignments routes with parameters (alias untuk admin-lpmpp.assignments)
+        if (name.includes('assessor-assignments')) {
+            if (name.includes('.show') || name.includes('.edit') || name.includes('.update') || name.includes('.destroy')) {
                 return routeFn.url(allParams[0]);
             }
         }
@@ -223,6 +242,15 @@ export function route(name: string, params?: Record<string, any> | string | numb
             }
             if (name.includes('.targets.') && (name.includes('.update') || name.includes('.delete'))) {
                 return routeFn.url(allParams[0]);
+            }
+            // Handle accreditation routes with optional cycleId
+            if (name.includes('.accreditation.')) {
+                if (name.includes('.criteria') || name.includes('.simulation') || name.includes('.lkps')) {
+                    if (allParams.length > 0) {
+                        return routeFn.url(allParams[0]);
+                    }
+                    return routeFn.url();
+                }
             }
         }
         // For assessor-internal routes with parameters

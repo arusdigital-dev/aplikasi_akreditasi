@@ -12,8 +12,8 @@ use App\Http\Requests\CoordinatorProdi\UpdateCriteriaPointRequest;
 use App\Http\Requests\CoordinatorProdi\UpdateCriterionRequest;
 use App\Http\Requests\CoordinatorProdi\UpdateDocumentRequest;
 use App\Models\ActivityLog;
-use App\Models\AssessorAssignmentRequest;
 use App\Models\AkreditasiTarget;
+use App\Models\AssessorAssignmentRequest;
 use App\Models\Assignment;
 use App\Models\CriteriaPoint;
 use App\Models\Criterion;
@@ -43,11 +43,20 @@ class CoordinatorProdiController extends Controller
     }
 
     /**
+     * Get authenticated user with proper type hint.
+     */
+    private function getUser(): \App\Models\User
+    {
+        /** @var \App\Models\User */
+        return Auth::user();
+    }
+
+    /**
      * Display the coordinator prodi dashboard.
      */
     public function index(Request $request): Response|RedirectResponse
     {
-        $user = Auth::user();
+        $user = $this->getUser();
         $year = $request->get('year', Carbon::now()->year);
 
         // Validate that user has prodi_id
@@ -138,7 +147,7 @@ class CoordinatorProdiController extends Controller
      */
     public function createDocument(Request $request): Response
     {
-        $user = Auth::user();
+        $user = $this->getUser();
 
         // Load prodi and fakultas relationships
         $user->load(['prodi.fakultas']);
@@ -147,7 +156,7 @@ class CoordinatorProdiController extends Controller
         $prodi = $user->prodi;
 
         // If prodi_id is null, try to find prodi by name from user's name or unit
-        if (!$prodi && $user->name) {
+        if (! $prodi && $user->name) {
             // Extract prodi name from user name (e.g., "Koordinator Teknik Informatika" -> "Teknik Informatika")
             $prodiName = str_replace('Koordinator ', '', $user->name);
             $prodi = \App\Models\Prodi::where('name', $prodiName)->first();
@@ -174,7 +183,7 @@ class CoordinatorProdiController extends Controller
      */
     public function documents(Request $request): Response
     {
-        $user = Auth::user();
+        $user = $this->getUser();
 
         $query = Document::where('prodi_id', $user->prodi_id)
             ->with(['program', 'prodi', 'uploadedBy', 'validatedBy', 'rejectedBy']);
@@ -199,7 +208,7 @@ class CoordinatorProdiController extends Controller
         }
 
         if ($request->filled('search')) {
-            $query->where('file_name', 'like', '%' . $request->search . '%');
+            $query->where('file_name', 'like', '%'.$request->search.'%');
         }
 
         $documents = $query->latest('created_at')
@@ -243,17 +252,17 @@ class CoordinatorProdiController extends Controller
      */
     public function storeDocument(StoreDocumentRequest $request): RedirectResponse
     {
-        $user = Auth::user();
+        $user = $this->getUser();
         $file = $request->file('file');
 
         // Validate that user has prodi_id
-        if (!$user->prodi_id) {
+        if (! $user->prodi_id) {
             return redirect()->back()->with('error', 'Anda belum terhubung dengan Program Studi.');
         }
 
         // Generate file path
         $year = $request->year ?? Carbon::now()->year;
-        $fileName = time() . '_' . str()->slug($file->getClientOriginalName());
+        $fileName = time().'_'.str()->slug($file->getClientOriginalName());
         $filePath = "documents/{$user->prodi_id}/{$year}/{$fileName}";
 
         // Store file
@@ -288,7 +297,7 @@ class CoordinatorProdiController extends Controller
      */
     public function updateDocument(UpdateDocumentRequest $request, string $id): RedirectResponse
     {
-        $user = Auth::user();
+        $user = $this->getUser();
         $document = Document::where('prodi_id', $user->prodi_id)->findOrFail($id);
 
         $updateData = [];
@@ -301,7 +310,7 @@ class CoordinatorProdiController extends Controller
 
             // Store new file
             $file = $request->file('file');
-            $fileName = time() . '_' . str()->slug($file->getClientOriginalName());
+            $fileName = time().'_'.str()->slug($file->getClientOriginalName());
             $filePath = "documents/{$user->prodi_id}/{$document->year}/{$fileName}";
 
             Storage::disk('local')->put($filePath, file_get_contents($file->getRealPath()));
@@ -337,7 +346,7 @@ class CoordinatorProdiController extends Controller
      */
     public function deleteDocument(string $id): RedirectResponse
     {
-        $user = Auth::user();
+        $user = $this->getUser();
         $document = Document::where('prodi_id', $user->prodi_id)->findOrFail($id);
 
         // Delete file
@@ -356,7 +365,7 @@ class CoordinatorProdiController extends Controller
      */
     public function downloadDocument(string $id): BinaryFileResponse
     {
-        $user = Auth::user();
+        $user = $this->getUser();
         $document = Document::where('prodi_id', $user->prodi_id)->findOrFail($id);
 
         $filePath = Storage::disk('local')->path($document->file_path);
@@ -369,79 +378,17 @@ class CoordinatorProdiController extends Controller
      */
     public function documentCompleteness(Request $request): Response
     {
-        $user = Auth::user();
+        $user = $this->getUser();
         $programId = $request->get('program_id');
-        $year = $request->get('year', Carbon::now()->year);
+        $year = (int) $request->get('year', Carbon::now()->year);
 
-        $programs = $user->accessiblePrograms();
+        $programsQuery = $user->accessiblePrograms();
         if ($programId) {
-            $programs = $programs->where('id', $programId);
+            $programsQuery = $programsQuery->where('id', $programId);
         }
-        $programs = $programs->with(['standards.criteria.criteriaPoints'])->get();
+        $programs = $programsQuery->with(['standards.criteria.criteriaPoints'])->get();
 
-        $completenessData = [];
-
-        foreach ($programs as $program) {
-            $programData = [
-                'program_id' => $program->id,
-                'program_name' => $program->name,
-                'standards' => [],
-            ];
-
-            foreach ($program->standards as $standard) {
-                $standardData = [
-                    'standard_id' => $standard->id,
-                    'standard_name' => $standard->name,
-                    'total_criteria' => $standard->criteria->count(),
-                    'completed_criteria' => 0,
-                    'criteria' => [],
-                ];
-
-                foreach ($standard->criteria as $criterion) {
-                    // Check if documents exist for this criterion
-                    $documentsCount = Document::where('prodi_id', $user->prodi_id)
-                        ->where('program_id', $program->id)
-                        ->where('year', $year)
-                        ->whereHas('assignment', function ($q) use ($criterion) {
-                            $q->where('criteria_id', $criterion->id);
-                        })
-                        ->whereNotNull('validated_at')
-                        ->count();
-
-                    $isComplete = $documentsCount > 0;
-
-                    if ($isComplete) {
-                        $standardData['completed_criteria']++;
-                    }
-
-                    $standardData['criteria'][] = [
-                        'criteria_id' => $criterion->id,
-                        'criteria_name' => $criterion->name,
-                        'documents_required' => 1, // Placeholder
-                        'documents_available' => $documentsCount,
-                        'status' => $isComplete ? 'lengkap' : 'belum_lengkap',
-                        'missing_documents' => $isComplete ? [] : ['Dokumen untuk kriteria ini belum diupload'],
-                    ];
-                }
-
-                $standardData['completion_percentage'] = $standardData['total_criteria'] > 0
-                    ? round(($standardData['completed_criteria'] / $standardData['total_criteria']) * 100, 2)
-                    : 0;
-
-                $programData['standards'][] = $standardData;
-            }
-
-            // Calculate program summary
-            $totalCriteria = collect($programData['standards'])->sum('total_criteria');
-            $completedCriteria = collect($programData['standards'])->sum('completed_criteria');
-            $programData['total_criteria'] = $totalCriteria;
-            $programData['completed_criteria'] = $completedCriteria;
-            $programData['completion_percentage'] = $totalCriteria > 0
-                ? round(($completedCriteria / $totalCriteria) * 100, 2)
-                : 0;
-
-            $completenessData[] = $programData;
-        }
+        $completenessData = $this->buildCompletenessData($programs, $user->prodi_id, $year);
 
         return Inertia::render('Dashboard/CoordinatorProdi/Reports/Completeness', [
             'completenessData' => $completenessData,
@@ -454,11 +401,118 @@ class CoordinatorProdiController extends Controller
     }
 
     /**
+     * Build completeness data for programs.
+     *
+     * @param  \Illuminate\Database\Eloquent\Collection<int, Program>  $programs
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildCompletenessData($programs, string $prodiId, int $year): array
+    {
+        $completenessData = [];
+
+        foreach ($programs as $program) {
+            $programData = $this->buildProgramCompletenessData($program, $prodiId, $year);
+            $completenessData[] = $programData;
+        }
+
+        return $completenessData;
+    }
+
+    /**
+     * Build completeness data for a single program.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildProgramCompletenessData(Program $program, string $prodiId, int $year): array
+    {
+        $programData = [
+            'program_id' => $program->id,
+            'program_name' => $program->name,
+            'standards' => [],
+        ];
+
+        foreach ($program->standards as $standard) {
+            $standardData = $this->buildStandardCompletenessData($standard, $program->id, $prodiId, $year);
+            $programData['standards'][] = $standardData;
+        }
+
+        // Calculate program summary
+        $totalCriteria = collect($programData['standards'])->sum('total_criteria');
+        $completedCriteria = collect($programData['standards'])->sum('completed_criteria');
+        $programData['total_criteria'] = $totalCriteria;
+        $programData['completed_criteria'] = $completedCriteria;
+        $programData['completion_percentage'] = $totalCriteria > 0
+            ? round(($completedCriteria / $totalCriteria) * 100, 2)
+            : 0;
+
+        return $programData;
+    }
+
+    /**
+     * Build completeness data for a single standard.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildStandardCompletenessData(Standard $standard, string $programId, string $prodiId, int $year): array
+    {
+        $standardData = [
+            'standard_id' => $standard->id,
+            'standard_name' => $standard->name,
+            'total_criteria' => $standard->criteria->count(),
+            'completed_criteria' => 0,
+            'criteria' => [],
+        ];
+
+        foreach ($standard->criteria as $criterion) {
+            $criterionData = $this->buildCriterionCompletenessData($criterion, $programId, $prodiId, $year);
+            $standardData['criteria'][] = $criterionData;
+
+            if ($criterionData['status'] === 'lengkap') {
+                $standardData['completed_criteria']++;
+            }
+        }
+
+        $standardData['completion_percentage'] = $standardData['total_criteria'] > 0
+            ? round(($standardData['completed_criteria'] / $standardData['total_criteria']) * 100, 2)
+            : 0;
+
+        return $standardData;
+    }
+
+    /**
+     * Build completeness data for a single criterion.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildCriterionCompletenessData(Criterion $criterion, string $programId, string $prodiId, int $year): array
+    {
+        $documentsCount = Document::where('prodi_id', $prodiId)
+            ->where('program_id', $programId)
+            ->where('year', $year)
+            ->whereHas('assignment', function ($q) use ($criterion) {
+                $q->where('criteria_id', $criterion->id);
+            })
+            ->whereNotNull('validated_at')
+            ->count();
+
+        $isComplete = $documentsCount > 0;
+
+        return [
+            'criteria_id' => $criterion->id,
+            'criteria_name' => $criterion->name,
+            'documents_required' => 1,
+            'documents_available' => $documentsCount,
+            'status' => $isComplete ? 'lengkap' : 'belum_lengkap',
+            'missing_documents' => $isComplete ? [] : ['Dokumen untuk kriteria ini belum diupload'],
+        ];
+    }
+
+    /**
      * Send reminder notification to dosen/tendik.
      */
     public function sendReminder(SendReminderRequest $request): RedirectResponse
     {
-        $user = Auth::user();
+        $user = $this->getUser();
         $recipients = Employee::whereIn('id', $request->recipient_ids)->get();
 
         $channels = match ($request->channel ?? 'both') {
@@ -496,7 +550,7 @@ class CoordinatorProdiController extends Controller
      */
     public function assessmentStatistics(Request $request): Response
     {
-        $user = Auth::user();
+        $user = $this->getUser();
 
         $query = Evaluation::whereHas('assignment', function ($q) use ($user) {
             $q->where('prodi_id', $user->prodi_id);
@@ -587,11 +641,11 @@ class CoordinatorProdiController extends Controller
      */
     public function simulation(Request $request): Response
     {
-        $user = Auth::user();
+        $user = $this->getUser();
         $programs = $user->accessiblePrograms()->get(['id', 'name']);
 
         // If no program_id provided, use first accessible program or show selection
-        if (!$request->filled('program_id')) {
+        if (! $request->filled('program_id')) {
             if ($programs->isEmpty()) {
                 return Inertia::render('Dashboard/CoordinatorProdi/Simulation/Index', [
                     'simulationData' => [
@@ -626,7 +680,7 @@ class CoordinatorProdiController extends Controller
             'standards.criteria.criteriaPoints',
             'akreditasiTargets' => function ($q) use ($year) {
                 $q->where('year', $year);
-            }
+            },
         ]);
 
         $simulationData = [
@@ -760,8 +814,8 @@ class CoordinatorProdiController extends Controller
 
         if ($filters['search']) {
             $query->where(function ($q) use ($filters) {
-                $q->where('title', 'like', '%' . $filters['search'] . '%')
-                    ->orWhere('description', 'like', '%' . $filters['search'] . '%');
+                $q->where('title', 'like', '%'.$filters['search'].'%')
+                    ->orWhere('description', 'like', '%'.$filters['search'].'%');
             });
         }
 
@@ -792,7 +846,7 @@ class CoordinatorProdiController extends Controller
      */
     public function criteria(Request $request): Response
     {
-        $user = Auth::user();
+        $user = $this->getUser();
 
         $programId = $request->get('program_id');
         $standardId = $request->get('standard_id');
@@ -936,7 +990,7 @@ class CoordinatorProdiController extends Controller
      */
     public function createAssessorRequest(Request $request): Response
     {
-        $user = Auth::user();
+        $user = $this->getUser();
         $programs = $user->accessiblePrograms()->get(['id', 'name']);
         $criteria = Criterion::with(['standard.program'])->get();
 
@@ -958,7 +1012,7 @@ class CoordinatorProdiController extends Controller
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        $user = Auth::user();
+        $user = $this->getUser();
 
         $assessorRequest = AssessorAssignmentRequest::create([
             'prodi_id' => $user->prodi_id,
@@ -977,7 +1031,7 @@ class CoordinatorProdiController extends Controller
         foreach ($admins as $admin) {
             $this->notificationService->sendToUser(
                 $admin,
-                \App\Models\NotificationType::PolicyUpdate,
+                NotificationType::PolicyUpdate,
                 'Permintaan Penunjukan Asesor',
                 'Koordinator Prodi mengajukan penunjukan asesor untuk kriteria atau LKPS.',
                 [
@@ -1154,11 +1208,11 @@ class CoordinatorProdiController extends Controller
      */
     public function standards(Request $request): Response
     {
-        $user = Auth::user();
+        $user = $this->getUser();
         $programs = $user->accessiblePrograms()->get(['id', 'name']);
 
         // If no program_id provided, use first accessible program or show selection
-        if (!$request->filled('program_id')) {
+        if (! $request->filled('program_id')) {
             if ($programs->isEmpty()) {
                 return Inertia::render('Dashboard/CoordinatorProdi/Standards/Index', [
                     'program' => null,
@@ -1188,28 +1242,13 @@ class CoordinatorProdiController extends Controller
      */
     public function scoreRecap(Request $request): Response
     {
-        $user = Auth::user();
+        $user = $this->getUser();
         $programs = $user->accessiblePrograms()->get(['id', 'name']);
 
         // If no program_id provided, use first accessible program or show selection
-        if (!$request->filled('program_id')) {
+        if (! $request->filled('program_id')) {
             if ($programs->isEmpty()) {
-                return Inertia::render('Dashboard/CoordinatorProdi/ScoreRecap/Index', [
-                    'recapData' => [
-                        'program_id' => '',
-                        'program_name' => '',
-                        'year' => Carbon::now()->year,
-                        'standards' => [],
-                        'total_score' => 0,
-                        'max_possible_score' => 0,
-                        'total_percentage' => 0,
-                        'grade' => '',
-                    ],
-                    'scorePerCriteria' => [],
-                    'scorePerStandard' => [],
-                    'programs' => [],
-                    'filters' => [],
-                ]);
+                return $this->renderEmptyScoreRecap();
             }
             $program = $programs->first();
         } else {
@@ -1224,65 +1263,62 @@ class CoordinatorProdiController extends Controller
             'standard_id' => ['nullable', 'string', 'exists:standards,id'],
         ]);
 
-        $programId = $program->id;
-        $year = $request->year ?? Carbon::now()->year;
-
+        $year = (int) ($request->year ?? Carbon::now()->year);
         $program->load(['standards.criteria.criteriaPoints']);
 
+        $recapData = $this->buildScoreRecapData($program, $user->prodi_id, $year);
+        $chartData = $this->buildScoreRecapChartData($recapData);
+
+        return Inertia::render('Dashboard/CoordinatorProdi/ScoreRecap/Index', [
+            'recapData' => $recapData,
+            'scorePerCriteria' => $chartData['scorePerCriteria'],
+            'scorePerStandard' => $chartData['scorePerStandard'],
+            'programs' => $user->accessiblePrograms()->get(['id', 'name']),
+            'filters' => $request->only(['program_id', 'year', 'standard_id']),
+        ]);
+    }
+
+    /**
+     * Render empty score recap page.
+     */
+    private function renderEmptyScoreRecap(): Response
+    {
+        return Inertia::render('Dashboard/CoordinatorProdi/ScoreRecap/Index', [
+            'recapData' => [
+                'program_id' => '',
+                'program_name' => '',
+                'year' => Carbon::now()->year,
+                'standards' => [],
+                'total_score' => 0,
+                'max_possible_score' => 0,
+                'total_percentage' => 0,
+                'grade' => '',
+            ],
+            'scorePerCriteria' => [],
+            'scorePerStandard' => [],
+            'programs' => [],
+            'filters' => [],
+        ]);
+    }
+
+    /**
+     * Build score recap data for a program.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildScoreRecapData(Program $program, string $prodiId, int $year): array
+    {
         $recapData = [
             'program_id' => $program->id,
             'program_name' => $program->name,
             'year' => $year,
             'standards' => [],
-            'total_score' => 0,
-            'max_possible_score' => 0,
+            'total_score' => 0.0,
+            'max_possible_score' => 0.0,
         ];
 
         foreach ($program->standards as $standard) {
-            $standardData = [
-                'standard_id' => $standard->id,
-                'standard_name' => $standard->name,
-                'weight' => $standard->weight,
-                'criteria' => [],
-                'total_score' => 0,
-                'max_score' => 0,
-            ];
-
-            foreach ($standard->criteria as $criterion) {
-                $maxScore = $criterion->criteriaPoints->sum('max_score') ?? 0;
-
-                // Get evaluations for this criterion
-                $evaluations = Evaluation::whereHas('assignment', function ($q) use ($criterion, $user) {
-                    $q->where('criteria_id', $criterion->id)
-                        ->where('prodi_id', $user->prodi_id);
-                })->get();
-
-                $score = $evaluations->isNotEmpty() ? $evaluations->avg('score') : 0;
-                $lastEvaluationDate = $evaluations->isNotEmpty() ? $evaluations->latest('created_at')->first()->created_at : null;
-
-                $criteriaData = [
-                    'criteria_id' => $criterion->id,
-                    'criteria_name' => $criterion->name,
-                    'weight' => $criterion->weight,
-                    'score' => round($score, 2),
-                    'max_score' => $maxScore,
-                    'percentage' => $maxScore > 0 ? round(($score / $maxScore) * 100, 2) : 0,
-                    'evaluations_count' => $evaluations->count(),
-                    'last_evaluation_date' => $lastEvaluationDate?->format('Y-m-d H:i:s'),
-                ];
-
-                // Calculate weighted score
-                $weightedScore = $maxScore > 0 ? ($score / $maxScore) * $criterion->weight : 0;
-                $standardData['total_score'] += $weightedScore;
-                $standardData['max_score'] += $criterion->weight;
-
-                $standardData['criteria'][] = $criteriaData;
-            }
-
-            $standardData['percentage'] = $standardData['max_score'] > 0
-                ? round(($standardData['total_score'] / $standardData['max_score']) * 100, 2)
-                : 0;
-
+            $standardData = $this->buildStandardScoreRecapData($standard, $prodiId, $year);
             $recapData['standards'][] = $standardData;
             $recapData['total_score'] += $standardData['total_score'];
             $recapData['max_possible_score'] += $standardData['max_score'];
@@ -1290,35 +1326,109 @@ class CoordinatorProdiController extends Controller
 
         $recapData['total_percentage'] = $recapData['max_possible_score'] > 0
             ? round(($recapData['total_score'] / $recapData['max_possible_score']) * 100, 2)
-            : 0;
+            : 0.0;
 
         $recapData['grade'] = $this->calculateGrade($recapData['total_score']);
 
-        // Chart data
+        return $recapData;
+    }
+
+    /**
+     * Build score recap data for a standard.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildStandardScoreRecapData(Standard $standard, string $prodiId, int $year): array
+    {
+        $standardData = [
+            'standard_id' => $standard->id,
+            'standard_name' => $standard->name,
+            'weight' => $standard->weight,
+            'criteria' => [],
+            'total_score' => 0.0,
+            'max_score' => 0.0,
+        ];
+
+        foreach ($standard->criteria as $criterion) {
+            $criteriaData = $this->buildCriterionScoreRecapData($criterion, $prodiId, $year);
+            $standardData['criteria'][] = $criteriaData;
+
+            $weightedScore = $criteriaData['max_score'] > 0
+                ? ($criteriaData['score'] / $criteriaData['max_score']) * $criterion->weight
+                : 0.0;
+
+            $standardData['total_score'] += $weightedScore;
+            $standardData['max_score'] += $criterion->weight;
+        }
+
+        $standardData['percentage'] = $standardData['max_score'] > 0
+            ? round(($standardData['total_score'] / $standardData['max_score']) * 100, 2)
+            : 0.0;
+
+        return $standardData;
+    }
+
+    /**
+     * Build score recap data for a criterion.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildCriterionScoreRecapData(Criterion $criterion, string $prodiId, int $year): array
+    {
+        $maxScore = (float) ($criterion->criteriaPoints->sum('max_score') ?? 0);
+
+        $evaluations = Evaluation::whereHas('assignment', function ($q) use ($criterion, $prodiId, $year) {
+            $q->where('criteria_id', $criterion->id)
+                ->where('prodi_id', $prodiId)
+                ->whereYear('created_at', $year);
+        })->get();
+
+        $score = $evaluations->isNotEmpty() ? (float) $evaluations->avg('score') : 0.0;
+        $lastEvaluation = $evaluations->isNotEmpty() ? $evaluations->latest('created_at')->first() : null;
+
+        return [
+            'criteria_id' => $criterion->id,
+            'criteria_name' => $criterion->name,
+            'weight' => $criterion->weight,
+            'score' => round($score, 2),
+            'max_score' => $maxScore,
+            'percentage' => $maxScore > 0 ? round(($score / $maxScore) * 100, 2) : 0.0,
+            'evaluations_count' => $evaluations->count(),
+            'last_evaluation_date' => $lastEvaluation?->created_at?->format('Y-m-d H:i:s'),
+        ];
+    }
+
+    /**
+     * Build chart data for score recap.
+     *
+     * @param  array<string, mixed>  $recapData
+     * @return array<string, array<int, array<string, mixed>>>
+     */
+    private function buildScoreRecapChartData(array $recapData): array
+    {
         $scorePerCriteria = collect($recapData['standards'])
-            ->flatMap(fn($std) => $std['criteria'])
-            ->map(fn($crit) => [
+            ->flatMap(fn ($std) => $std['criteria'])
+            ->map(fn ($crit) => [
                 'name' => $crit['criteria_name'],
                 'score' => $crit['score'],
                 'max_score' => $crit['max_score'],
             ])
+            ->values()
             ->toArray();
 
         $scorePerStandard = collect($recapData['standards'])
-            ->map(fn($std) => [
+            ->map(fn ($std) => [
                 'name' => $std['standard_name'],
                 'score' => $std['total_score'],
                 'max_score' => $std['max_score'],
             ])
+            ->values()
             ->toArray();
 
-        return Inertia::render('Dashboard/CoordinatorProdi/ScoreRecap/Index', [
-            'recapData' => $recapData,
+        return [
             'scorePerCriteria' => $scorePerCriteria,
             'scorePerStandard' => $scorePerStandard,
-            'programs' => $user->accessiblePrograms()->get(['id', 'name']),
-            'filters' => $request->only(['program_id', 'year', 'standard_id']),
-        ]);
+        ];
     }
 
     /**
@@ -1326,7 +1436,7 @@ class CoordinatorProdiController extends Controller
      */
     public function getTargets(Request $request): Response
     {
-        $user = Auth::user();
+        $user = $this->getUser();
         $programs = $user->accessiblePrograms()->get();
 
         $targets = AkreditasiTarget::whereIn('program_id', $programs->pluck('id'))
@@ -1346,7 +1456,7 @@ class CoordinatorProdiController extends Controller
      */
     public function createTarget(Request $request): Response
     {
-        $user = Auth::user();
+        $user = $this->getUser();
         $programs = $user->accessiblePrograms()->get(['id', 'name']);
 
         return Inertia::render('Dashboard/CoordinatorProdi/Targets/Create', [
@@ -1359,7 +1469,7 @@ class CoordinatorProdiController extends Controller
      */
     public function setTarget(SetTargetRequest $request): RedirectResponse
     {
-        $user = Auth::user();
+        $user = $this->getUser();
 
         // Verify program is accessible
         $program = $user->accessiblePrograms()->findOrFail($request->program_id);
@@ -1392,7 +1502,7 @@ class CoordinatorProdiController extends Controller
      */
     public function updateTarget(SetTargetRequest $request, string $id): RedirectResponse
     {
-        $user = Auth::user();
+        $user = $this->getUser();
         $target = AkreditasiTarget::findOrFail($id);
 
         // Verify program is accessible
@@ -1412,7 +1522,7 @@ class CoordinatorProdiController extends Controller
      */
     public function deleteTarget(string $id): RedirectResponse
     {
-        $user = Auth::user();
+        $user = $this->getUser();
         $target = AkreditasiTarget::findOrFail($id);
 
         // Verify program is accessible
@@ -1543,5 +1653,384 @@ class CoordinatorProdiController extends Controller
             $score >= 201 => 'Baik',
             default => 'Kurang',
         };
+    }
+
+    /**
+     * Display accreditation cycles page.
+     */
+    public function accreditationCycles(Request $request): Response|RedirectResponse
+    {
+        $user = $this->getUser();
+        $prodi = $user->prodi;
+
+        if (! $prodi) {
+            return redirect()->route('coordinator-prodi.index')
+                ->with('error', 'Prodi tidak ditemukan');
+        }
+
+        $cycles = \App\Models\AccreditationCycle::where('prodi_id', $prodi->id)
+            ->with('lam:id,name,code')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $activeCycle = $cycles->firstWhere('status', 'active');
+        $lams = \App\Models\LAM::where('is_active', true)->get(['id', 'name', 'code']);
+
+        return Inertia::render('Dashboard/CoordinatorProdi/Accreditation/Cycles', [
+            'cycles' => $cycles,
+            'activeCycle' => $activeCycle,
+            'lams' => $lams,
+            'prodi' => $prodi,
+        ]);
+    }
+
+    /**
+     * Store a new accreditation cycle.
+     */
+    public function storeAccreditationCycle(Request $request): RedirectResponse
+    {
+        $user = $this->getUser();
+        $prodi = $user->prodi;
+
+        if (! $prodi) {
+            return redirect()->route('coordinator-prodi.index')
+                ->with('error', 'Prodi tidak ditemukan');
+        }
+
+        $validated = $request->validate([
+            'lam_id' => 'required|exists:lams,id',
+            'cycle_name' => 'required|string|max:100',
+            'start_date' => 'required|date',
+            'target_submission_date' => 'nullable|date',
+            'notes' => 'nullable|string',
+        ]);
+
+        $cycle = \App\Models\AccreditationCycle::create([
+            'prodi_id' => $prodi->id,
+            'lam_id' => $validated['lam_id'],
+            'cycle_name' => $validated['cycle_name'],
+            'start_date' => $validated['start_date'],
+            'target_submission_date' => $validated['target_submission_date'] ?? null,
+            'status' => 'draft',
+            'notes' => $validated['notes'] ?? null,
+        ]);
+
+        return redirect()->route('coordinator-prodi.accreditation.cycles')
+            ->with('success', 'Siklus akreditasi berhasil dibuat');
+    }
+
+    /**
+     * Display accreditation criteria and matrix page.
+     */
+    public function accreditationCriteria(Request $request, ?string $cycleId = null): Response|RedirectResponse
+    {
+        $user = $this->getUser();
+        $prodi = $user->prodi;
+
+        if (! $prodi) {
+            return redirect()->route('coordinator-prodi.index')
+                ->with('error', 'Prodi tidak ditemukan');
+        }
+
+        $cycle = null;
+        if ($cycleId) {
+            $cycle = \App\Models\AccreditationCycle::where('prodi_id', $prodi->id)
+                ->with([
+                    'lam' => function ($query) {
+                        $query->with([
+                            'standards' => function ($query) {
+                                $query->orderBy('order_index');
+                            },
+                            'standards.elements' => function ($query) {
+                                $query->orderBy('order_index');
+                            },
+                            'standards.elements.indicators' => function ($query) {
+                                $query->orderBy('order_index');
+                            },
+                            'standards.elements.indicators.rubrics' => function ($query) {
+                                $query->orderBy('score', 'desc');
+                            },
+                        ]);
+                    },
+                ])->find($cycleId);
+
+            if (! $cycle) {
+                return redirect()->route('coordinator-prodi.accreditation.cycles')
+                    ->with('error', 'Siklus akreditasi tidak ditemukan atau tidak memiliki akses.');
+            }
+        } else {
+            // Jika tidak ada cycleId, cari active cycle atau cycle terbaru
+            $cycle = \App\Models\AccreditationCycle::where('prodi_id', $prodi->id)
+                ->where('status', 'active')
+                ->with([
+                    'lam' => function ($query) {
+                        $query->with([
+                            'standards' => function ($query) {
+                                $query->orderBy('order_index');
+                            },
+                            'standards.elements' => function ($query) {
+                                $query->orderBy('order_index');
+                            },
+                            'standards.elements.indicators' => function ($query) {
+                                $query->orderBy('order_index');
+                            },
+                            'standards.elements.indicators.rubrics' => function ($query) {
+                                $query->orderBy('score', 'desc');
+                            },
+                        ]);
+                    },
+                ])
+                ->first();
+
+            // Jika tidak ada active cycle, ambil cycle terbaru
+            if (! $cycle) {
+                $cycle = \App\Models\AccreditationCycle::where('prodi_id', $prodi->id)
+                    ->with([
+                        'lam' => function ($query) {
+                            $query->with([
+                                'standards' => function ($query) {
+                                    $query->orderBy('order_index');
+                                },
+                                'standards.elements' => function ($query) {
+                                    $query->orderBy('order_index');
+                                },
+                                'standards.elements.indicators' => function ($query) {
+                                    $query->orderBy('order_index');
+                                },
+                                'standards.elements.indicators.rubrics' => function ($query) {
+                                    $query->orderBy('score', 'desc');
+                                },
+                            ]);
+                        },
+                    ])
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+            }
+        }
+
+        // Get indicator scores (jika cycle ada)
+        $scores = [];
+        if ($cycle) {
+            $scores = \App\Models\ProdiIndicatorScore::where('accreditation_cycle_id', $cycle->id)
+                ->get()
+                ->keyBy('lam_indicator_id')
+                ->map(function ($score) {
+                    return [
+                        'id' => $score->id,
+                        'lam_indicator_id' => $score->lam_indicator_id,
+                        'score' => $score->score,
+                        'notes' => $score->notes,
+                        'source' => $score->source,
+                    ];
+                })
+                ->toArray();
+        }
+
+        // Format cycle data untuk frontend
+        $cycleData = null;
+        if ($cycle) {
+            $cycleData = [
+                'id' => $cycle->id,
+                'cycle_name' => $cycle->cycle_name,
+                'lam' => [
+                    'id' => $cycle->lam->id,
+                    'name' => $cycle->lam->name,
+                    'standards' => $cycle->lam->standards->map(function ($standard) {
+                        return [
+                            'id' => $standard->id,
+                            'code' => $standard->code,
+                            'name' => $standard->name,
+                            'description' => $standard->description,
+                            'weight' => $standard->weight,
+                            'elements' => $standard->elements->map(function ($element) {
+                                return [
+                                    'id' => $element->id,
+                                    'code' => $element->code,
+                                    'name' => $element->name,
+                                    'description' => $element->description,
+                                    'weight' => $element->weight,
+                                    'indicators' => $element->indicators->map(function ($indicator) {
+                                        return [
+                                            'id' => $indicator->id,
+                                            'code' => $indicator->code,
+                                            'name' => $indicator->name,
+                                            'description' => $indicator->description,
+                                            'document_requirements' => $indicator->document_requirements,
+                                            'weight' => $indicator->weight,
+                                            'rubrics' => $indicator->rubrics->map(function ($rubric) {
+                                                return [
+                                                    'id' => $rubric->id,
+                                                    'score' => $rubric->score,
+                                                    'label' => $rubric->label,
+                                                    'description' => $rubric->description,
+                                                ];
+                                            })->values()->all(),
+                                        ];
+                                    })->values()->all(),
+                                ];
+                            })->values()->all(),
+                        ];
+                    })->values()->all(),
+                ],
+            ];
+        }
+
+        return Inertia::render('Dashboard/CoordinatorProdi/Accreditation/Criteria', [
+            'cycle' => $cycleData,
+            'scores' => $scores,
+        ]);
+    }
+
+    /**
+     * Display accreditation simulation page.
+     */
+    public function accreditationSimulation(Request $request, ?string $cycleId = null): Response|RedirectResponse
+    {
+        $user = $this->getUser();
+        $prodi = $user->prodi;
+
+        if (! $prodi) {
+            return redirect()->route('coordinator-prodi.index')
+                ->with('error', 'Prodi tidak ditemukan');
+        }
+
+        $cycle = null;
+        if ($cycleId) {
+            $cycle = \App\Models\AccreditationCycle::where('prodi_id', $prodi->id)
+                ->with('lam')
+                ->find($cycleId);
+
+            if (! $cycle) {
+                return redirect()->route('coordinator-prodi.accreditation.cycles')
+                    ->with('error', 'Siklus akreditasi tidak ditemukan atau tidak memiliki akses.');
+            }
+        } else {
+            // Jika tidak ada cycleId, cari active cycle atau cycle terbaru
+            $cycle = \App\Models\AccreditationCycle::where('prodi_id', $prodi->id)
+                ->where('status', 'active')
+                ->with('lam')
+                ->first();
+
+            // Jika tidak ada active cycle, ambil cycle terbaru
+            if (! $cycle) {
+                $cycle = \App\Models\AccreditationCycle::where('prodi_id', $prodi->id)
+                    ->with('lam')
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+            }
+        }
+
+        // Get simulation history (jika cycle ada)
+        $simulations = [];
+        $currentScores = [];
+        if ($cycle) {
+            $simulations = \App\Models\AccreditationSimulation::where('accreditation_cycle_id', $cycle->id)
+                ->with('creator:id,name')
+                ->orderBy('created_at', 'desc')
+                ->limit(10)
+                ->get()
+                ->map(function ($simulation) {
+                    return [
+                        'id' => $simulation->id,
+                        'total_score' => $simulation->total_score,
+                        'predicted_result' => $simulation->predicted_result,
+                        'created_at' => $simulation->created_at,
+                        'creator' => $simulation->creator ? [
+                            'name' => $simulation->creator->name,
+                        ] : null,
+                    ];
+                })
+                ->toArray();
+
+            // Get current scores
+            $simulationService = app(\App\Services\SimulationService::class);
+            $currentScores = $simulationService->getCurrentScores($cycle);
+        }
+
+        return Inertia::render('Dashboard/CoordinatorProdi/Accreditation/Simulation', [
+            'cycle' => $cycle,
+            'simulations' => $simulations,
+            'currentScores' => $currentScores,
+        ]);
+    }
+
+    /**
+     * Display LKPS (Program Performance Report) page.
+     */
+    public function accreditationLKPS(Request $request, ?string $cycleId = null): Response|RedirectResponse
+    {
+        $user = $this->getUser();
+        $prodi = $user->prodi;
+
+        if (! $prodi) {
+            return redirect()->route('coordinator-prodi.index')
+                ->with('error', 'Prodi tidak ditemukan');
+        }
+
+        $cycle = null;
+        if ($cycleId) {
+            $cycle = \App\Models\AccreditationCycle::where('prodi_id', $prodi->id)
+                ->with('lam')
+                ->find($cycleId);
+
+            if (! $cycle) {
+                return redirect()->route('coordinator-prodi.accreditation.cycles')
+                    ->with('error', 'Siklus akreditasi tidak ditemukan atau tidak memiliki akses.');
+            }
+        } else {
+            // Jika tidak ada cycleId, cari active cycle atau cycle terbaru
+            $cycle = \App\Models\AccreditationCycle::where('prodi_id', $prodi->id)
+                ->where('status', 'active')
+                ->with('lam')
+                ->first();
+
+            // Jika tidak ada active cycle, ambil cycle terbaru
+            if (! $cycle) {
+                $cycle = \App\Models\AccreditationCycle::where('prodi_id', $prodi->id)
+                    ->with('lam')
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+            }
+        }
+
+        // Get documents for this cycle (jika cycle ada)
+        $documents = [];
+        if ($cycle) {
+            $documents = Document::where('accreditation_cycle_id', $cycle->id)
+                ->with('uploadedBy:id,name')
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($document) {
+                    return [
+                        'id' => $document->id,
+                        'file_name' => $document->file_name,
+                        'file_type' => $document->file_type,
+                        'file_size' => $document->file_size,
+                        'category' => $document->category,
+                        'year' => $document->year,
+                        'uploaded_by' => $document->uploadedBy ? [
+                            'name' => $document->uploadedBy->name,
+                        ] : null,
+                        'created_at' => $document->created_at,
+                    ];
+                })
+                ->toArray();
+        }
+
+        // Format prodi data untuk frontend
+        $prodiData = null;
+        if ($prodi) {
+            $prodiData = [
+                'id' => $prodi->id,
+                'name' => $prodi->name,
+                'fakultas_name' => $prodi->fakultas?->name ?? '',
+            ];
+        }
+
+        return Inertia::render('Dashboard/CoordinatorProdi/Accreditation/LKPS', [
+            'cycle' => $cycle,
+            'documents' => $documents,
+            'prodi' => $prodiData,
+        ]);
     }
 }

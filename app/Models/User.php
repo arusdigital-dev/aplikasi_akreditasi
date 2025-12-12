@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -185,6 +186,20 @@ class User extends Authenticatable
      */
     public function isCoordinatorProdi(?string $unitId = null): bool
     {
+        // First check global roles
+        if (! $this->relationLoaded('roles')) {
+            $this->load('roles');
+        }
+
+        $hasGlobalRole = $this->roles->contains(function ($role) {
+            return in_array($role->name, ['Koordinator Prodi', 'Koordinator Program Studi']);
+        });
+
+        if ($hasGlobalRole) {
+            return true;
+        }
+
+        // Then check unit-specific roles if unit_id is provided
         $unitId = $unitId ?? $this->unit_id;
 
         if (! $unitId) {
@@ -336,8 +351,10 @@ class User extends Authenticatable
     /**
      * Get programs accessible by coordinator.
      * Programs are accessible if they belong to the user's prodi (via fakultas field).
+     *
+     * @return Builder<Program>
      */
-    public function accessiblePrograms()
+    public function accessiblePrograms(): Builder
     {
         if (! $this->prodi_id) {
             return Program::query()->whereRaw('1 = 0'); // Empty result
@@ -362,7 +379,7 @@ class User extends Authenticatable
         // Get programs with matching fakultas name from prodi's fakultas
         $fakultas = $prodi->fakultas;
         if ($fakultas) {
-            return Program::where('fakultas', $fakultas->name);
+            return Program::query()->where('fakultas', $fakultas->name);
         }
 
         // Fallback: return empty if no fakultas

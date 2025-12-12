@@ -1,3 +1,10 @@
+/**
+ * Komponen Sidebar untuk Koordinator Prodi
+ * 
+ * Komponen ini menampilkan navigasi sidebar untuk dashboard koordinator prodi.
+ * Berisi menu-menu utama seperti Dashboard, Dokumen, Laporan, Akreditasi, dll.
+ */
+
 import { Link, router, usePage } from '@inertiajs/react';
 import { route } from '@/lib/route';
 
@@ -6,26 +13,39 @@ export default function CoordinatorSidebar() {
     const { auth } = page.props as { auth?: { user?: { name: string; email: string; avatar?: string } | null; role?: string } | null };
     const currentUrl = page.url;
 
+    /**
+     * Fungsi untuk mengecek apakah route sedang aktif
+     * @param href - URL path yang akan dicek
+     * @returns boolean - true jika route aktif, false jika tidak
+     */
     const isActive = (href: string): boolean => {
+        // Cek khusus untuk halaman dashboard utama
         if (href === '/coordinator-prodi') {
             return currentUrl === '/coordinator-prodi';
         }
-        // For documents, be more specific to avoid matching both index and create
+
+        // Cek khusus untuk halaman dokumen (hindari match dengan create)
         if (href === '/coordinator-prodi/documents') {
-            return currentUrl === '/coordinator-prodi/documents' || 
-                   (currentUrl.startsWith('/coordinator-prodi/documents/') && 
+            return currentUrl === '/coordinator-prodi/documents' ||
+                (currentUrl.startsWith('/coordinator-prodi/documents/') &&
                     !currentUrl.startsWith('/coordinator-prodi/documents/create'));
         }
+
+        // Cek umum untuk route lainnya
         return currentUrl.startsWith(href);
     };
 
+    /**
+     * Handler untuk logout
+     * Mengirim POST request ke endpoint logout
+     */
     const handleLogout = () => {
         router.post('/logout');
     };
 
     return (
         <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-screen flex-shrink-0">
-            {/* Logo */}
+            {/* Header Logo */}
             <div className="p-6 border-b border-gray-200 flex-shrink-0">
                 <div className="flex items-center gap-3">
                     <img src="/images/logo.png" alt="Logo" className="w-10 h-10 object-contain" />
@@ -36,8 +56,9 @@ export default function CoordinatorSidebar() {
                 </div>
             </div>
 
-            {/* Navigation */}
+            {/* Navigasi Menu */}
             <nav className="flex-1 p-4 space-y-1 overflow-x-hidden">
+                {/* Menu Dashboard */}
                 <Link
                     href={route('coordinator-prodi.index')}
                     className={`flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg ${
@@ -52,38 +73,8 @@ export default function CoordinatorSidebar() {
                     Dashboard
                 </Link>
 
-                <div className="pt-4">
-                    <div className="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                        Dokumen
-                    </div>
-                    <Link
-                        href={route('coordinator-prodi.documents.index')}
-                        className={`flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
-                            isActive('/coordinator-prodi/documents') && !isActive('/coordinator-prodi/documents/create')
-                                ? 'text-white bg-blue-600'
-                                : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        Daftar Dokumen
-                    </Link>
-                    <Link
-                        href={route('coordinator-prodi.documents.create')}
-                        className={`flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
-                            isActive('/coordinator-prodi/documents/create')
-                                ? 'text-white bg-blue-600'
-                                : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                        </svg>
-                        Upload Dokumen
-                    </Link>
-                </div>
 
+                {/* Section: Laporan & Analisis */}
                 <div className="pt-4">
                     <div className="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                         Laporan & Analisis
@@ -142,6 +133,66 @@ export default function CoordinatorSidebar() {
                     </Link>
                 </div>
 
+                {/* Section: Akreditasi */}
+                <div className="pt-4">
+                    <div className="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                        Akreditasi
+                    </div>
+                    <Link
+                        href={route('coordinator-prodi.accreditation.cycles')}
+                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
+                            isActive('/coordinator-prodi/accreditation')
+                                ? 'text-white bg-blue-600 font-medium'
+                                : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Siklus Akreditasi
+                    </Link>
+                    <Link
+                        href={route('coordinator-prodi.accreditation.criteria')}
+                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
+                            isActive('/coordinator-prodi/accreditation/criteria')
+                                ? 'text-white bg-blue-600 font-medium'
+                                : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                        </svg>
+                        Kriteria & Matriks
+                    </Link>
+                    <Link
+                        href={route('coordinator-prodi.accreditation.simulation')}
+                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
+                            isActive('/coordinator-prodi/accreditation/simulation')
+                                ? 'text-white bg-blue-600 font-medium'
+                                : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                        Simulasi Akreditasi
+                    </Link>
+                    <Link
+                        href={route('coordinator-prodi.accreditation.lkps')}
+                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
+                            isActive('/coordinator-prodi/accreditation/lkps')
+                                ? 'text-white bg-blue-600 font-medium'
+                                : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        LKPS
+                    </Link>
+                </div>
+
+                {/* Section: Referensi */}
                 <div className="pt-4">
                     <div className="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                         Referensi
@@ -174,6 +225,7 @@ export default function CoordinatorSidebar() {
                     </Link>
                 </div>
 
+                {/* Section: Pengaturan */}
                 <div className="pt-4">
                     <div className="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                         Pengaturan
@@ -207,7 +259,7 @@ export default function CoordinatorSidebar() {
                 </div>
             </nav>
 
-            {/* Logout */}
+            {/* Footer: Tombol Logout */}
             <div className="p-4 border-t border-gray-200 flex-shrink-0">
                 <button
                     onClick={handleLogout}
@@ -222,4 +274,3 @@ export default function CoordinatorSidebar() {
         </aside>
     );
 }
-

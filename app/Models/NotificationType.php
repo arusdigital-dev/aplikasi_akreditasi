@@ -17,6 +17,7 @@ enum NotificationType: string
     case AccreditationSchedule = 'accreditation_schedule';
     case PolicyUpdate = 'policy_update';
     case DocumentIssue = 'document_issue';
+    case AssessorAssignment = 'assessor_assignment';
 
     public function label(): string
     {
@@ -34,6 +35,7 @@ enum NotificationType: string
             self::AccreditationSchedule => 'Jadwal Akreditasi',
             self::PolicyUpdate => 'Pembaruan Kebijakan',
             self::DocumentIssue => 'Dokumen Bermasalah',
+            self::AssessorAssignment => 'Penugasan Asesor',
         };
     }
 }

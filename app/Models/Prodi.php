@@ -33,6 +33,7 @@ class Prodi extends Model
      */
     protected $fillable = [
         'fakultas_id',
+        'lam_id',
         'name',
         'kode_prodi',
         'is_active',
@@ -80,5 +81,21 @@ class Prodi extends Model
     public function assignments(): HasMany
     {
         return $this->hasMany(Assignment::class, 'prodi_id');
+    }
+
+    /**
+     * Get the LAM that this prodi uses.
+     */
+    public function lam(): BelongsTo
+    {
+        return $this->belongsTo(LAM::class, 'lam_id');
+    }
+
+    /**
+     * Get the accreditation cycles for this prodi.
+     */
+    public function accreditationCycles(): HasMany
+    {
+        return $this->hasMany(AccreditationCycle::class, 'prodi_id');
     }
 }

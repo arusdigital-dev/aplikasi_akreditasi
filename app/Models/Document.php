@@ -20,6 +20,7 @@ class Document extends Model
      */
     protected $fillable = [
         'assignment_id',
+        'accreditation_cycle_id',
         'program_id',
         'unit_id',
         'prodi_id',
@@ -62,6 +63,14 @@ class Document extends Model
     public function assignment(): BelongsTo
     {
         return $this->belongsTo(Assignment::class, 'assignment_id');
+    }
+
+    /**
+     * Get the accreditation cycle for this document.
+     */
+    public function accreditationCycle(): BelongsTo
+    {
+        return $this->belongsTo(AccreditationCycle::class, 'accreditation_cycle_id');
     }
 
     /**

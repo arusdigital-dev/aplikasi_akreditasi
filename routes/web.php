@@ -1,16 +1,39 @@
 <?php
 
+/**
+ * File Routes Web Application
+ *
+ * File ini berisi definisi semua route untuk aplikasi akreditasi.
+ * Route dikelompokkan berdasarkan middleware dan role pengguna.
+ */
+
+use App\Http\Controllers\API\AccreditationController;
+use App\Http\Controllers\API\LAMController;
+use App\Http\Controllers\API\SimulationController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Dashboard\AdminLPMPPController;
 use App\Http\Controllers\Dashboard\CoordinatorProdiController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
+// ============================================================================
+// ROUTE PUBLIK
+// ============================================================================
+
+/**
+ * Halaman Landing Page
+ */
 Route::get('/', function () {
     return Inertia::render('LandingPage');
 })->name('home');
 
+// ============================================================================
+// ROUTE AUTHENTIKASI (Guest Only)
+// ============================================================================
+
 Route::middleware('guest')->group(function () {
+    // Login & Register
     Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
     Route::post('/login', [AuthController::class, 'login']);
     Route::get('/register', [AuthController::class, 'showRegisterForm'])->name('register');
@@ -21,18 +44,23 @@ Route::middleware('guest')->group(function () {
     Route::get('/auth/google/callback', [AuthController::class, 'handleGoogleCallback'])->name('google.callback');
 });
 
+// ============================================================================
+// ROUTE TERPROTEKSI (Memerlukan Authentikasi)
+// ============================================================================
+
 Route::middleware('auth')->group(function () {
+    // Logout - dapat diakses semua user yang sudah login
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
-    // Admin LPMPP routes - Only accessible by Admin LPMPP
+    // ========================================================================
+    // ROUTE ADMIN LPMPP
+    // ========================================================================
     Route::middleware('admin.lpmpp')->prefix('admin-lpmpp')->name('admin-lpmpp.')->group(function () {
         // Dashboard
         Route::get('/', [AdminLPMPPController::class, 'index'])->name('index');
-
-        // Progress Summary
         Route::get('/progress-summary', [AdminLPMPPController::class, 'progressSummary'])->name('progress-summary');
 
-        // Assignments
+        // Penugasan Asesor
         Route::get('/assignments', [AdminLPMPPController::class, 'assignments'])->name('assignments.index');
         Route::get('/assignments/create', [AdminLPMPPController::class, 'createAssignment'])->name('assignments.create');
         Route::post('/assignments', [AdminLPMPPController::class, 'storeAssignment'])->name('assignments.store');
@@ -40,11 +68,12 @@ Route::middleware('auth')->group(function () {
         Route::put('/assignments/{id}', [AdminLPMPPController::class, 'updateAssignment'])->name('assignments.update');
         Route::post('/assignments/{id}/assign', [AdminLPMPPController::class, 'assignAssessor'])->name('assignments.assign');
         Route::post('/assignments/{id}/unassign', [AdminLPMPPController::class, 'unassignAssessor'])->name('assignments.unassign');
+        Route::delete('/assignments/{id}', [AdminLPMPPController::class, 'destroyAssignment'])->name('assignments.destroy');
 
-        // Statistics
+        // Statistik
         Route::get('/statistics', [AdminLPMPPController::class, 'statistics'])->name('statistics.index');
 
-        // Employees
+        // Manajemen Karyawan
         Route::get('/employees', [AdminLPMPPController::class, 'employees'])->name('employees.index');
         Route::get('/employees/create', [AdminLPMPPController::class, 'createEmployee'])->name('employees.create');
         Route::post('/employees', [AdminLPMPPController::class, 'storeEmployee'])->name('employees.store');
@@ -53,41 +82,47 @@ Route::middleware('auth')->group(function () {
         Route::get('/employees/{id}/edit', [AdminLPMPPController::class, 'editEmployee'])->name('employees.edit');
         Route::put('/employees/{id}', [AdminLPMPPController::class, 'updateEmployee'])->name('employees.update');
 
-        // Reports
+        // Laporan
         Route::get('/reports', [AdminLPMPPController::class, 'reports'])->name('reports.index');
         Route::post('/reports/generate', [AdminLPMPPController::class, 'generateReport'])->name('reports.generate');
         Route::get('/reports/preview', [AdminLPMPPController::class, 'previewReport'])->name('reports.preview');
+        Route::get('/reports/{report}/download', [AdminLPMPPController::class, 'downloadReport'])->name('reports.download');
 
-        // Notifications
+        // Notifikasi
         Route::get('/notifications', [AdminLPMPPController::class, 'notifications'])->name('notifications.index');
         Route::post('/notifications/send-reminder', [AdminLPMPPController::class, 'sendReminder'])->name('notifications.send-reminder');
         Route::post('/notifications/send-broadcast', [AdminLPMPPController::class, 'sendBroadcast'])->name('notifications.send-broadcast');
 
-        // Problem Documents
+        // Dokumen Bermasalah
         Route::get('/problem-documents', [AdminLPMPPController::class, 'problemDocuments'])->name('problem-documents.index');
 
-        // Download Report
-        Route::get('/reports/{report}/download', [AdminLPMPPController::class, 'downloadReport'])->name('reports.download');
-
-        // Assessor Assignment Requests
+        // Permintaan Penugasan Asesor
         Route::get('/assessor-requests', [AdminLPMPPController::class, 'assessorRequests'])->name('assessor-requests.index');
-        // Assessor Assignment Requests Processing
         Route::post('/assessor-requests/{id}/approve', [AdminLPMPPController::class, 'approveAssessorRequest'])->name('assessor-requests.approve');
         Route::post('/assessor-requests/{id}/reject', [AdminLPMPPController::class, 'rejectAssessorRequest'])->name('assessor-requests.reject');
+
+        // Penugasan Asesor Akreditasi (LAM-based)
+        Route::get('/accreditation-assessor-assignments', [AdminLPMPPController::class, 'accreditationAssessorAssignments'])->name('accreditation-assessor-assignments.index');
+        Route::post('/accreditation-assessor-assignments', [AdminLPMPPController::class, 'assignAccreditationAssessor'])->name('accreditation-assessor-assignments.assign');
     });
 
-    // Notification routes - Accessible by all authenticated users
+    // ========================================================================
+    // ROUTE NOTIFIKASI (Dapat diakses semua user yang sudah login)
+    // ========================================================================
     Route::get('/notifications', [\App\Http\Controllers\Dashboard\NotificationController::class, 'index'])->name('notifications.index');
     Route::post('/notifications/{id}/read', [\App\Http\Controllers\Dashboard\NotificationController::class, 'markAsRead'])->name('notifications.read');
     Route::post('/notifications/read-all', [\App\Http\Controllers\Dashboard\NotificationController::class, 'markAllAsRead'])->name('notifications.read-all');
     Route::get('/api/notifications/unread-count', [\App\Http\Controllers\Dashboard\NotificationController::class, 'unreadCount'])->name('notifications.unread-count');
     Route::get('/api/notifications/recent', [\App\Http\Controllers\Dashboard\NotificationController::class, 'recent'])->name('notifications.recent');
 
-    // Assessor Internal routes
+    // ========================================================================
+    // ROUTE ASSESSOR INTERNAL
+    // ========================================================================
     Route::prefix('assessor-internal')->name('assessor-internal.')->middleware('assessor.internal')->group(function () {
         // Dashboard
         Route::get('/', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'dashboard'])->name('index');
-        // Dashboard - Evaluation Documents
+
+        // Evaluasi Dokumen
         Route::get('/evaluation-documents', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'index'])->name('evaluation-documents.index');
         Route::get('/evaluation-documents/{documentId}/evaluate', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'showEvaluation'])->name('evaluation-documents.evaluate');
         Route::get('/evaluation-documents/{documentId}/history', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'showHistory'])->name('evaluation-documents.history');
@@ -95,27 +130,29 @@ Route::middleware('auth')->group(function () {
         Route::match(['put', 'patch'], '/evaluation-notes/{id}', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'updateEvaluation'])->name('evaluation-notes.update');
         Route::get('/evaluation-notes/{id}/download/{type}', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'downloadEvaluationFile'])->name('evaluation-notes.download');
 
-        // Assessment Assignments (Poin Penilaian)
+        // Penugasan Penilaian (Poin Penilaian)
         Route::get('/assignments', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'assignments'])->name('assignments.index');
         Route::get('/assignments/{assignmentId}/evaluate', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'showAssignmentEvaluation'])->name('assignments.evaluate');
         Route::post('/assignments/{assignmentId}/evaluations', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'storeAssignmentEvaluation'])->name('assignments.evaluations.store');
         Route::match(['put', 'patch'], '/assignments/{assignmentId}/evaluations', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'updateAssignmentEvaluation'])->name('assignments.evaluations.update');
 
-        // Document download
+        // Download Dokumen
         Route::get('/documents/{id}/download', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'downloadDocument'])->name('documents.download');
 
-        // Statistics
+        // Statistik
         Route::get('/statistics/per-program', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'statisticsPerProgram'])->name('statistics.per-program');
         Route::get('/statistics/per-criterion', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'statisticsPerCriterion'])->name('statistics.per-criterion');
         Route::get('/statistics/progress', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'statisticsProgress'])->name('statistics.progress');
 
-        // Simulation
+        // Simulasi
         Route::get('/simulation', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'simulation'])->name('simulation');
         Route::get('/simulation/export/pdf', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'exportSimulationPDF'])->name('simulation.export.pdf');
         Route::get('/simulation/export/excel', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'exportSimulationExcel'])->name('simulation.export.excel');
     });
 
-    // Pimpinan routes
+    // ========================================================================
+    // ROUTE PIMPINAN
+    // ========================================================================
     Route::prefix('pimpinan')->name('pimpinan.')->middleware('pimpinan')->group(function () {
         Route::get('/', [\App\Http\Controllers\Dashboard\PimpinanController::class, 'dashboard'])->name('dashboard');
         Route::get('/rekap-nilai', [\App\Http\Controllers\Dashboard\PimpinanController::class, 'rekapNilai'])->name('rekap-nilai');
@@ -125,12 +162,14 @@ Route::middleware('auth')->group(function () {
         Route::get('/insight-kesiapan', [\App\Http\Controllers\Dashboard\PimpinanController::class, 'insightKesiapan'])->name('insight-kesiapan');
     });
 
-    // Coordinator Prodi routes
+    // ========================================================================
+    // ROUTE KOORDINATOR PRODI
+    // ========================================================================
     Route::prefix('coordinator-prodi')->name('coordinator-prodi.')->middleware('coordinator.prodi')->group(function () {
         // Dashboard
         Route::get('/', [CoordinatorProdiController::class, 'index'])->name('index');
 
-        // Documents
+        // Manajemen Dokumen
         Route::get('/documents', [CoordinatorProdiController::class, 'documents'])->name('documents.index');
         Route::get('/documents/create', [CoordinatorProdiController::class, 'createDocument'])->name('documents.create');
         Route::post('/documents', [CoordinatorProdiController::class, 'storeDocument'])->name('documents.store');
@@ -138,19 +177,19 @@ Route::middleware('auth')->group(function () {
         Route::delete('/documents/{id}', [CoordinatorProdiController::class, 'deleteDocument'])->name('documents.delete');
         Route::get('/documents/{id}/download', [CoordinatorProdiController::class, 'downloadDocument'])->name('documents.download');
 
-        // Document completeness
+        // Laporan Kelengkapan Dokumen
         Route::get('/reports/completeness', [CoordinatorProdiController::class, 'documentCompleteness'])->name('reports.completeness');
 
-        // Notifications
+        // Notifikasi
         Route::post('/notifications/reminder', [CoordinatorProdiController::class, 'sendReminder'])->name('notifications.reminder');
 
-        // Statistics
+        // Statistik Penilaian
         Route::get('/statistics/assessment', [CoordinatorProdiController::class, 'assessmentStatistics'])->name('statistics.assessment');
 
-        // Simulation
+        // Simulasi Penilaian
         Route::get('/simulation', [CoordinatorProdiController::class, 'simulation'])->name('simulation');
 
-        // Criteria Points
+        // Poin Kriteria
         Route::get('/criteria-points', [CoordinatorProdiController::class, 'criteriaPoints'])->name('criteria-points.index');
         Route::get('/criteria-points/create', [CoordinatorProdiController::class, 'createCriteriaPoint'])->name('criteria-points.create');
         Route::post('/criteria-points', [CoordinatorProdiController::class, 'storeCriteriaPoint'])->name('criteria-points.store');
@@ -158,10 +197,10 @@ Route::middleware('auth')->group(function () {
         Route::put('/criteria-points/{id}', [CoordinatorProdiController::class, 'updateCriteriaPoint'])->name('criteria-points.update');
         Route::delete('/criteria-points/{id}', [CoordinatorProdiController::class, 'destroyCriteriaPoint'])->name('criteria-points.destroy');
 
-        // Standards
+        // Standar Akreditasi
         Route::get('/standards', [CoordinatorProdiController::class, 'standards'])->name('standards');
 
-        // Criteria
+        // Kriteria
         Route::get('/criteria', [CoordinatorProdiController::class, 'criteria'])->name('criteria.index');
         Route::get('/criteria/create', [CoordinatorProdiController::class, 'createCriterion'])->name('criteria.create');
         Route::post('/criteria', [CoordinatorProdiController::class, 'storeCriterion'])->name('criteria.store');
@@ -169,18 +208,70 @@ Route::middleware('auth')->group(function () {
         Route::put('/criteria/{id}', [CoordinatorProdiController::class, 'updateCriterion'])->name('criteria.update');
         Route::delete('/criteria/{id}', [CoordinatorProdiController::class, 'destroyCriterion'])->name('criteria.destroy');
 
-        // Assessor Requests
+        // Permintaan Asesor
         Route::get('/assessor-requests/create', [CoordinatorProdiController::class, 'createAssessorRequest'])->name('assessor-requests.create');
         Route::post('/assessor-requests', [CoordinatorProdiController::class, 'storeAssessorRequest'])->name('assessor-requests.store');
 
-        // Score recap
+        // Rekap Nilai
         Route::get('/score-recap', [CoordinatorProdiController::class, 'scoreRecap'])->name('score-recap');
 
-        // Targets
+        // Target Akreditasi
         Route::get('/targets', [CoordinatorProdiController::class, 'getTargets'])->name('targets.index');
         Route::get('/targets/create', [CoordinatorProdiController::class, 'createTarget'])->name('targets.create');
         Route::post('/targets', [CoordinatorProdiController::class, 'setTarget'])->name('targets.store');
         Route::put('/targets/{id}', [CoordinatorProdiController::class, 'updateTarget'])->name('targets.update');
         Route::delete('/targets/{id}', [CoordinatorProdiController::class, 'deleteTarget'])->name('targets.delete');
+
+        // ====================================================================
+        // SISTEM AKREDITASI BERBASIS LAM
+        // ====================================================================
+        Route::prefix('accreditation')->name('accreditation.')->group(function () {
+            // Route Halaman (Render Inertia Pages)
+            Route::get('/cycles', [CoordinatorProdiController::class, 'accreditationCycles'])->name('cycles');
+            Route::get('/criteria/{cycleId?}', [CoordinatorProdiController::class, 'accreditationCriteria'])->name('criteria');
+            Route::get('/simulation/{cycleId?}', [CoordinatorProdiController::class, 'accreditationSimulation'])->name('simulation');
+            Route::get('/lkps/{cycleId?}', [CoordinatorProdiController::class, 'accreditationLKPS'])->name('lkps');
+
+            // API Framework LAM
+            Route::get('/lam', function (Request $request) {
+                $prodi = $request->user()->prodi;
+                if (! $prodi) {
+                    abort(404, 'Prodi not found');
+                }
+
+                return app(LAMController::class)->getProdiLAM($prodi->id);
+            })->name('lam.show');
+            Route::get('/lam/{id}', [LAMController::class, 'show'])->name('lam.detail');
+
+            // API Siklus Akreditasi
+            Route::get('/cycles/active', function (Request $request) {
+                $prodi = $request->user()->prodi;
+                if (! $prodi) {
+                    abort(404, 'Prodi not found');
+                }
+
+                return app(AccreditationController::class)->getActiveCycle($prodi->id);
+            })->name('cycles.active');
+            Route::post('/cycles', [CoordinatorProdiController::class, 'storeAccreditationCycle'])->name('cycles.create');
+            Route::put('/cycles/{id}', [AccreditationController::class, 'updateCycle'])->name('cycles.update');
+
+            // API Skor Indikator
+            Route::get('/cycles/{id}/scores', [AccreditationController::class, 'getIndicatorScores'])->name('cycles.scores');
+            Route::post('/cycles/{id}/scores', [AccreditationController::class, 'saveIndicatorScore'])->name('cycles.scores.save');
+
+            // API Simulasi
+            Route::post('/cycles/{id}/simulation', [SimulationController::class, 'runSimulation'])->name('simulation.run');
+            Route::post('/cycles/{id}/simulation/current', [SimulationController::class, 'runSimulationWithCurrentScores'])->name('simulation.run-current');
+            Route::get('/cycles/{id}/simulation/history', [SimulationController::class, 'getSimulationHistory'])->name('simulation.history');
+            Route::get('/simulation/{id}', [SimulationController::class, 'getSimulation'])->name('simulation.show');
+        });
+    });
+
+    // ========================================================================
+    // API ROUTES UNTUK LAM (Dapat diakses user yang sudah login)
+    // ========================================================================
+    Route::prefix('api')->name('api.')->group(function () {
+        Route::get('/lams', [LAMController::class, 'index'])->name('lams.index');
+        Route::get('/lams/{id}', [LAMController::class, 'show'])->name('lams.show');
     });
 });

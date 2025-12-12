@@ -1,0 +1,245 @@
+Berikut saya susun prompt yang lengkap, sistematis, dan siap pakai untuk Cursor agar developer dapat mengimplementasikan:
+
+Generalisasi sistem akreditasi untuk semua LAM (LAM INFOKOM, LAMTEK, LAMDIK, LAMKES, LAMSAMA, dll.)
+
+Matriks Penilaian dinamis sesuai LAM yang dipilih prodi
+
+Simulasi Akreditasi (Scoring otomatis berbasis matriks & bobot)
+
+Alur assignment asesor eksternal oleh Admin LPMMP
+
+Struktur menu umum & API/DB design
+
+Prompt ini dirancang untuk langsung dipahami oleh engineer di Cursor:
+
+PROMPT CURSOR (COPY–PASTE)
+
+You are building a Generalized Accreditation System for a university.
+The system must support multiple LAM accreditation frameworks, including:
+
+LAM INFOKOM
+
+LAM TEKNIK (LAMTEK)
+
+LAM DIK (LAMDIK)
+
+LAM KES
+
+LAMSAMA
+
+Future LAMs (flexible schema)
+
+Your task is to architect and implement the accreditation modules so that every program study (Prodi) can use the system regardless of which LAM they fall under.
+
+1. GENERAL REQUIREMENTS
+A. Dynamic LAM Framework Loader
+
+Implement a system where each LAM has:
+
+LAM entity
+
+Standards (Kriteria)
+
+Elements (Elemen)
+
+Indicators (Indikator Penilaian)
+
+Rubrics (Deskripsi skala 1–4 atau 1–7 tergantung LAM)
+
+Weights (Bobot per standar)
+
+Document Requirements
+
+Matriks Penilaian
+
+Admin LPMPP must be able to upload or configure each LAM framework manually through the admin panel.
+
+Store all LAM data in DB so they are not hard-coded.
+
+2. PRODI → SELECT ACCREDITATION SCHEME
+
+Each Prodi has:
+
+lam_id → which LAM framework they use
+
+Accreditation cycle
+
+Active vs archived periode
+
+When Koordinator Prodi enters the Accreditation Menu:
+Load dynamic structures:
+
+{
+  "lam": "LAM INFOKOM",
+  "standards": [...],
+  "elements": [...],
+  "indicators": [...],
+  "weights": [...],
+  "rubric_matrix": [...]
+}
+
+
+All pages must adapt based on the selected LAM.
+
+3. MENU STRUCTURE (GENERALIZED)
+
+Under Accreditation:
+
+LKPS (Program Performance Report)
+
+Kriteria & Matriks Penilaian (Auto-loaded by LAM)
+
+Dokumen Pendukung
+
+Simulasi Akreditasi
+
+Asesor Section (For internal/external assessors)
+
+Hasil Akreditasi (Graph + Scoring)
+
+4. Kriteria & Matriks Penilaian (Dynamic)
+
+Implement a dynamic UI & backend:
+
+Show all LAM standards (K1–K9 or K1–K7 depending on LAM).
+
+Each standard contains elements and indicators.
+
+Indicators contain scoring rubrics (range 1–4 or custom per LAM).
+
+Koordinator Prodi uploads documents per indicator.
+
+System calculates auto-score if rubric provides measurable rules.
+
+5. SIMULASI AKREDITASI (Important Feature)
+
+Create a simulation engine with this logic:
+
+Input:
+
+All indicator scores
+
+Missing documents considered zero or flagged
+
+Weight per standard
+
+Algorithm:
+
+For each standard:
+
+final_score_standard = Σ(indicator_score × indicator_weight)
+weighted_score = final_score_standard × standard_weight
+
+Output:
+
+Numerical score per standard
+
+Total accreditation score
+
+Predicted Accreditation Result (Unggul / Baik Sekali / Baik / Tidak Terakreditasi)
+
+Gap Analysis (where to improve)
+
+Graph Visualization (Pie / Radar Chart)
+
+Koordinator Prodi can run simulation multiple times before submission.
+
+6. EXTERNAL ASSESSOR ASSIGNMENT FLOW
+
+Admin LPMPP must be able to:
+
+Create user with role: Assessor External
+
+Assign the assessor to a Prodi accreditation cycle
+
+Send credential to assessor
+
+Assessor can login and view only:
+
+Kriteria
+
+Uploaded documents
+
+Fill scores
+
+Provide notes & recommendations
+
+Assessor access must be restricted with RBAC.
+
+7. BACKEND MODEL SUGGESTION
+
+Use a normalized schema:
+
+LAM
+LAMStandards
+LAMElements
+LAMIndicators
+LAMRubrics
+LAMWeights
+Prodi
+ProdiAccreditation
+ProdiIndicatorScores
+ProdiDocuments
+Assessors
+AssessorAssignments
+Simulations
+
+
+All logic must work for any LAM, not just LAM INFOKOM.
+
+8. WHAT YOU MUST IMPLEMENT
+
+API endpoints for dynamic LAM loading
+
+DB schema for multi-LAM accreditation
+
+Logic for indicator scoring
+
+Simulation module
+
+External assessor assignment
+
+RBAC for:
+
+Koordinator Prodi
+
+Admin LPMPP
+
+External Assessor
+
+UI dynamic forms based on LAM structure
+
+Pie Chart / Radar Chart visualization for scoring
+
+9. DELIVERY EXPECTATION
+
+Produce:
+
+Prisma Schema (if using Prisma)
+
+Routes (REST or TRPC)
+
+Controllers / Services
+
+Database seed for sample LAM (LAM INFOKOM + LAMTEK)
+
+React/Tailwind/Next.js pages for:
+
+LKPS
+
+Kriteria & Indicators
+
+Simulation
+
+Assessor Scoring
+
+10. Targets
+
+The system must allow:
+
+Any faculty
+
+Any program study
+
+Any accreditation body
+to onboard into one unified platform with zero custom coding per LAM.
