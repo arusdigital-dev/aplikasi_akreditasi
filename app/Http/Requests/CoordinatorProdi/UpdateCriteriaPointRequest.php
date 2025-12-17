@@ -26,6 +26,11 @@ class UpdateCriteriaPointRequest extends FormRequest
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'max_score' => ['required', 'numeric', 'min:0'],
+            'order_index' => ['nullable', 'integer', 'min:1'],
+            'rubric_4' => ['nullable', 'string'],
+            'rubric_3' => ['nullable', 'string'],
+            'rubric_2' => ['nullable', 'string'],
+            'rubric_1' => ['nullable', 'string'],
         ];
     }
 
@@ -44,6 +49,8 @@ class UpdateCriteriaPointRequest extends FormRequest
             'max_score.required' => 'Nilai maksimal harus diisi.',
             'max_score.numeric' => 'Nilai maksimal harus berupa angka.',
             'max_score.min' => 'Nilai maksimal minimal 0.',
+            'order_index.integer' => 'Urutan harus berupa angka.',
+            'order_index.min' => 'Urutan minimal 1.',
         ];
     }
 }

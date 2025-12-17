@@ -174,7 +174,7 @@ class User extends Authenticatable
      */
     public function isAdminLPMPP(): bool
     {
-        if (! $this->relationLoaded('roles')) {
+        if (!$this->relationLoaded('roles')) {
             $this->load('roles');
         }
 
@@ -187,7 +187,7 @@ class User extends Authenticatable
     public function isCoordinatorProdi(?string $unitId = null): bool
     {
         // First check global roles
-        if (! $this->relationLoaded('roles')) {
+        if (!$this->relationLoaded('roles')) {
             $this->load('roles');
         }
 
@@ -202,7 +202,7 @@ class User extends Authenticatable
         // Then check unit-specific roles if unit_id is provided
         $unitId = $unitId ?? $this->unit_id;
 
-        if (! $unitId) {
+        if (!$unitId) {
             return false;
         }
 
@@ -216,22 +216,22 @@ class User extends Authenticatable
      */
     public function isAssessorInternal(): bool
     {
-        if (! $this->relationLoaded('roles')) {
+        if (!$this->relationLoaded('roles')) {
             $this->load('roles');
         }
 
         return $this->roles->contains('name', 'Asesor Internal');
     }
-    
+
     /**
      * Check if user has Assessor External role.
      */
     public function isAssessorExternal(): bool
     {
-        if (! $this->relationLoaded('roles')) {
+        if (!$this->relationLoaded('roles')) {
             $this->load('roles');
         }
-        
+
         return $this->roles->contains('name', 'Asesor Eksternal');
     }
 
@@ -240,7 +240,7 @@ class User extends Authenticatable
      */
     public function isRektor(): bool
     {
-        if (! $this->relationLoaded('roles')) {
+        if (!$this->relationLoaded('roles')) {
             $this->load('roles');
         }
 
@@ -252,7 +252,7 @@ class User extends Authenticatable
      */
     public function isWakilRektor(): bool
     {
-        if (! $this->relationLoaded('roles')) {
+        if (!$this->relationLoaded('roles')) {
             $this->load('roles');
         }
 
@@ -266,7 +266,7 @@ class User extends Authenticatable
     {
         $unitId = $unitId ?? $this->unit_id;
 
-        if (! $unitId) {
+        if (!$unitId) {
             return false;
         }
 
@@ -282,7 +282,7 @@ class User extends Authenticatable
     {
         $unitId = $unitId ?? $this->unit_id;
 
-        if (! $unitId) {
+        if (!$unitId) {
             return false;
         }
 
@@ -298,7 +298,7 @@ class User extends Authenticatable
     {
         $unitId = $unitId ?? $this->unit_id;
 
-        if (! $unitId) {
+        if (!$unitId) {
             return false;
         }
 
@@ -313,7 +313,7 @@ class User extends Authenticatable
     public function isPimpinan(): bool
     {
         // Check for universitas level roles (Rektor, Wakil Rektor)
-        if (! $this->relationLoaded('roles')) {
+        if (!$this->relationLoaded('roles')) {
             $this->load('roles');
         }
 
@@ -330,14 +330,14 @@ class User extends Authenticatable
         }
 
         // Also check unitRoles for any pimpinan role
-        if (! $this->relationLoaded('unitRoles')) {
+        if (!$this->relationLoaded('unitRoles')) {
             $this->load('unitRoles');
         }
 
         $pimpinanRoleNames = ['Rektor', 'Wakil Rektor', 'Dekan', 'Wakil Dekan', 'Kajur'];
         $userUnitRoleNames = $this->unitRoles->pluck('name')->toArray();
 
-        return ! empty(array_intersect($pimpinanRoleNames, $userUnitRoleNames));
+        return !empty(array_intersect($pimpinanRoleNames, $userUnitRoleNames));
     }
 
     /**
@@ -368,33 +368,6 @@ class User extends Authenticatable
      */
     public function accessiblePrograms(): Builder
     {
-        if (! $this->prodi_id) {
-            return Program::query()->whereRaw('1 = 0'); // Empty result
-        }
-
-        // Load prodi relationship if not loaded
-        if (! $this->relationLoaded('prodi')) {
-            $this->load('prodi');
-        }
-
-        $prodi = $this->prodi;
-
-        if (! $prodi) {
-            return Program::query()->whereRaw('1 = 0'); // Empty result
-        }
-
-        // Load fakultas relationship if not loaded
-        if (! $prodi->relationLoaded('fakultas')) {
-            $prodi->load('fakultas');
-        }
-
-        // Get programs with matching fakultas name from prodi's fakultas
-        $fakultas = $prodi->fakultas;
-        if ($fakultas) {
-            return Program::query()->where('fakultas', $fakultas->name);
-        }
-
-        // Fallback: return empty if no fakultas
-        return Program::query()->whereRaw('1 = 0');
+        return Program::query();
     }
 }

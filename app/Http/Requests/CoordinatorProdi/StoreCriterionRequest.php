@@ -14,12 +14,13 @@ class StoreCriterionRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'standard_id' => ['required', 'integer', 'exists:standards,id'],
+            'standard_id' => ['nullable', 'integer', 'exists:standards,id'],
+            'program_id' => ['required_without:standard_id', 'integer', 'exists:programs,id'],
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'weight' => ['required', 'numeric', 'min:0'],
+            'weight' => ['nullable', 'numeric', 'min:0'],
             'order_index' => ['required', 'integer', 'min:1'],
+            'lam_name' => ['nullable', 'string', 'max:255'],
         ];
     }
 }
-

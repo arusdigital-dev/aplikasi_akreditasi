@@ -40,7 +40,7 @@ class AdminLPMPPSeeder extends Seeder
         );
 
         // Assign role to user
-        if (! $adminUser->roles()->where('role_id', $adminRole->id)->exists()) {
+        if (!$adminUser->roles()->where('role_id', $adminRole->id)->exists()) {
             $adminUser->roles()->attach($adminRole->id);
         }
 
@@ -68,6 +68,8 @@ class AdminLPMPPSeeder extends Seeder
             [
                 'jenjang' => 'S1',
                 'fakultas' => 'Fakultas Teknik',
+                'criteria_points_base_scale' => 500,
+                'lam_name' => 'LAM INFOKOM',
             ]
         );
 
@@ -76,6 +78,8 @@ class AdminLPMPPSeeder extends Seeder
             [
                 'jenjang' => 'S1',
                 'fakultas' => 'Fakultas Teknik',
+                'criteria_points_base_scale' => 500,
+                'lam_name' => 'LAM INFOKOM',
             ]
         );
 
@@ -84,6 +88,8 @@ class AdminLPMPPSeeder extends Seeder
             [
                 'jenjang' => 'S1',
                 'fakultas' => 'Fakultas Teknik',
+                'criteria_points_base_scale' => 500,
+                'lam_name' => 'LAM TEKNIK',
             ]
         );
 

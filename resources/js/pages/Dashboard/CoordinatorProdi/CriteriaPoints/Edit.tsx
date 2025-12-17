@@ -14,6 +14,8 @@ interface CriteriaPoint {
     title: string;
     description: string | null;
     max_score: number;
+    order_index?: number;
+    rubrics?: { score: number; description: string }[];
     criterion: {
         name: string;
         standard: string;
@@ -32,6 +34,11 @@ export default function EditCriteriaPoint({ criteriaPoint, criteria }: Props) {
         title: criteriaPoint.title,
         description: criteriaPoint.description || '',
         max_score: criteriaPoint.max_score.toString(),
+        order_index: (criteriaPoint.order_index ?? '').toString(),
+        rubric_4: criteriaPoint.rubrics?.find(r => r.score === 4)?.description ?? '',
+        rubric_3: criteriaPoint.rubrics?.find(r => r.score === 3)?.description ?? '',
+        rubric_2: criteriaPoint.rubrics?.find(r => r.score === 2)?.description ?? '',
+        rubric_1: criteriaPoint.rubrics?.find(r => r.score === 1)?.description ?? '',
     });
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -58,7 +65,7 @@ export default function EditCriteriaPoint({ criteriaPoint, criteria }: Props) {
                                 <option value="">Pilih Kriteria</option>
                                 {criteria.map((criterion) => (
                                     <option key={criterion.id} value={criterion.id}>
-                                        {criterion.name} - {criterion.standard} ({criterion.program})
+                                        {criterion.name} ({criterion.program})
                                     </option>
                                 ))}
                             </select>
@@ -67,34 +74,34 @@ export default function EditCriteriaPoint({ criteriaPoint, criteria }: Props) {
 
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Judul Poin Kriteria <span className="text-red-500">*</span>
+                                Elemen Penilaian LAM <span className="text-red-500">*</span>
                             </label>
                             <input
                                 type="text"
                                 value={data.title}
                                 onChange={(e) => setData('title', e.target.value)}
                                 className="w-full rounded-md border-gray-300 shadow-sm"
-                                placeholder="Masukkan judul poin kriteria"
+                                placeholder="Masukkan elemen penilaian LAM"
                                 required
                             />
                             {errors.title && <p className="mt-1 text-sm text-red-600">{errors.title}</p>}
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Deskripsi</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Deskriptor</label>
                             <textarea
                                 value={data.description}
                                 onChange={(e) => setData('description', e.target.value)}
                                 className="w-full rounded-md border-gray-300 shadow-sm"
                                 rows={4}
-                                placeholder="Masukkan deskripsi poin kriteria (opsional)"
+                                placeholder="Masukkan deskriptor (opsional)"
                             />
                             {errors.description && <p className="mt-1 text-sm text-red-600">{errors.description}</p>}
                         </div>
 
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Nilai Maksimal <span className="text-red-500">*</span>
+                                Bobot <span className="text-red-500">*</span>
                             </label>
                             <input
                                 type="number"
@@ -107,6 +114,62 @@ export default function EditCriteriaPoint({ criteriaPoint, criteria }: Props) {
                                 required
                             />
                             {errors.max_score && <p className="mt-1 text-sm text-red-600">{errors.max_score}</p>}
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Urutan</label>
+                            <input
+                                type="number"
+                                value={data.order_index}
+                                onChange={(e) => setData('order_index', e.target.value)}
+                                className="w-full rounded-md border-gray-300 shadow-sm"
+                                placeholder="1"
+                                min="1"
+                            />
+                            {errors.order_index && <p className="mt-1 text-sm text-red-600">{errors.order_index}</p>}
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Sangat Baik = 4</label>
+                                <textarea
+                                    value={data.rubric_4}
+                                    onChange={(e) => setData('rubric_4', e.target.value)}
+                                    className="w-full rounded-md border-gray-300 shadow-sm"
+                                    rows={3}
+                                    placeholder="Deskripsi rubrik untuk skor 4"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Baik = 3</label>
+                                <textarea
+                                    value={data.rubric_3}
+                                    onChange={(e) => setData('rubric_3', e.target.value)}
+                                    className="w-full rounded-md border-gray-300 shadow-sm"
+                                    rows={3}
+                                    placeholder="Deskripsi rubrik untuk skor 3"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Cukup = 2</label>
+                                <textarea
+                                    value={data.rubric_2}
+                                    onChange={(e) => setData('rubric_2', e.target.value)}
+                                    className="w-full rounded-md border-gray-300 shadow-sm"
+                                    rows={3}
+                                    placeholder="Deskripsi rubrik untuk skor 2"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Kurang = 1</label>
+                                <textarea
+                                    value={data.rubric_1}
+                                    onChange={(e) => setData('rubric_1', e.target.value)}
+                                    className="w-full rounded-md border-gray-300 shadow-sm"
+                                    rows={3}
+                                    placeholder="Deskripsi rubrik untuk skor 1"
+                                />
+                            </div>
                         </div>
 
                         <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">

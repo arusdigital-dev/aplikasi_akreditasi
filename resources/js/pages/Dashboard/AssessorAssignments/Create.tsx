@@ -148,7 +148,7 @@ export default function AssessorAssignmentsCreate({
                                     <option value="">-- Pilih Kriteria --</option>
                                     {criteria.map((criterion) => (
                                         <option key={criterion.id} value={criterion.id}>
-                                            {criterion.name} - {criterion.program_name} ({criterion.standard_name})
+                                            {criterion.name} - {criterion.program_name}
                                         </option>
                                     ))}
                                 </select>
@@ -266,4 +266,3 @@ export default function AssessorAssignmentsCreate({
         </>
     );
 }
-

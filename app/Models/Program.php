@@ -19,6 +19,8 @@ class Program extends Model
         'name',
         'jenjang',
         'fakultas',
+        'criteria_points_base_scale',
+        'lam_name',
     ];
 
     /**

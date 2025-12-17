@@ -23,9 +23,8 @@ export default function AdminLPMPPLAMIndex({ lams }: Props) {
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-gray-900">Daftar LAM</h2>
                         <Link
-                            href="#"
+                            href={route('admin-lpmpp.lam.create')}
                             className="px-3 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700"
-                            onClick={(e) => e.preventDefault()}
                         >
                             Tambah LAM
                         </Link>

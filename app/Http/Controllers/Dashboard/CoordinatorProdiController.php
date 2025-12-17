@@ -60,7 +60,7 @@ class CoordinatorProdiController extends Controller
         $year = $request->get('year', Carbon::now()->year);
 
         // Validate that user has prodi_id
-        if (! $user->prodi_id) {
+        if (!$user->prodi_id) {
             return redirect()->route('home')
                 ->with('error', 'Anda belum terhubung dengan Program Studi. Silakan hubungi administrator.');
         }
@@ -151,13 +151,13 @@ class CoordinatorProdiController extends Controller
         $file = $request->file('file');
 
         // Validate that user has prodi_id
-        if (! $user->prodi_id) {
+        if (!$user->prodi_id) {
             return redirect()->back()->with('error', 'Anda belum terhubung dengan Program Studi.');
         }
 
         // Generate file path
         $year = $request->year ?? Carbon::now()->year;
-        $fileName = time().'_'.str()->slug($file->getClientOriginalName());
+        $fileName = time() . '_' . str()->slug($file->getClientOriginalName());
         $filePath = "documents/{$user->prodi_id}/{$year}/{$fileName}";
 
         // Store file
@@ -206,7 +206,7 @@ class CoordinatorProdiController extends Controller
 
             // Store new file
             $file = $request->file('file');
-            $fileName = time().'_'.str()->slug($file->getClientOriginalName());
+            $fileName = time() . '_' . str()->slug($file->getClientOriginalName());
             $filePath = "documents/{$user->prodi_id}/{$document->year}/{$fileName}";
 
             Storage::disk('local')->put($filePath, file_get_contents($file->getRealPath()));
@@ -541,7 +541,7 @@ class CoordinatorProdiController extends Controller
         $programs = $user->accessiblePrograms()->get(['id', 'name']);
 
         // If no program_id provided, use first accessible program or show selection
-        if (! $request->filled('program_id')) {
+        if (!$request->filled('program_id')) {
             if ($programs->isEmpty()) {
                 return Inertia::render('Dashboard/CoordinatorProdi/Simulation/Index', [
                     'simulationData' => [
@@ -710,12 +710,12 @@ class CoordinatorProdiController extends Controller
 
         if ($filters['search']) {
             $query->where(function ($q) use ($filters) {
-                $q->where('title', 'like', '%'.$filters['search'].'%')
-                    ->orWhere('description', 'like', '%'.$filters['search'].'%');
+                $q->where('title', 'like', '%' . $filters['search'] . '%')
+                    ->orWhere('description', 'like', '%' . $filters['search'] . '%');
             });
         }
 
-        $criteriaPoints = $query->orderBy('id')->paginate(15);
+        $criteriaPoints = $query->orderBy('order_index')->orderBy('id')->paginate(15);
 
         // Get all criteria for filter dropdown
         $criteria = Criterion::with(['standard.program'])
@@ -726,7 +726,10 @@ class CoordinatorProdiController extends Controller
                     'id' => $criterion->id,
                     'name' => $criterion->name,
                     'standard' => $criterion->standard?->name ?? 'N/A',
+                    'standard_id' => $criterion->standard?->id ?? null,
                     'program' => $criterion->standard?->program?->name ?? 'N/A',
+                    'program_id' => $criterion->standard?->program?->id ?? null,
+                    'program_base_scale' => $criterion->standard?->program?->criteria_points_base_scale ?? 400,
                 ];
             });
 
@@ -797,11 +800,40 @@ class CoordinatorProdiController extends Controller
      */
     public function storeCriterion(StoreCriterionRequest $request): RedirectResponse
     {
+        $standardId = $request->standard_id;
+        $program = null;
+        if (!$standardId) {
+            $user = $this->getUser();
+            $program = $user->accessiblePrograms()->findOrFail($request->program_id);
+            $nextOrder = (Standard::where('program_id', $program->id)->max('order_index') ?? 0) + 1;
+            $defaultStandard = Standard::firstOrCreate(
+                ['program_id' => $program->id, 'name' => 'Standar Default'],
+                ['description' => null, 'weight' => 0, 'order_index' => $nextOrder]
+            );
+            $standardId = $defaultStandard->id;
+        } else {
+            $standard = Standard::findOrFail($standardId);
+            $program = Program::find($standard->program_id);
+        }
+
+        if ($program && $request->filled('lam_name')) {
+            $program->update(['lam_name' => $request->lam_name]);
+            ActivityLog::create([
+                'user_id' => Auth::id(),
+                'action' => 'update',
+                'entity_type' => Program::class,
+                'entity_id' => (string) $program->id,
+                'description' => "Memperbarui nama LAM: {$request->lam_name}",
+                'ip_address' => request()->ip(),
+                'user_agent' => request()->userAgent(),
+            ]);
+        }
+
         $criterion = Criterion::create([
-            'standard_id' => $request->standard_id,
+            'standard_id' => $standardId,
             'name' => $request->name,
             'description' => $request->description,
-            'weight' => $request->weight,
+            'weight' => $request->weight ?? 0,
             'order_index' => $request->order_index,
         ]);
 
@@ -1009,11 +1041,24 @@ class CoordinatorProdiController extends Controller
      */
     public function storeCriteriaPoint(StoreCriteriaPointRequest $request): RedirectResponse
     {
+        $rubrics = [];
+        foreach ([4, 3, 2, 1] as $score) {
+            $key = 'rubric_' . $score;
+            if ($request->filled($key)) {
+                $rubrics[] = [
+                    'score' => $score,
+                    'description' => $request->get($key),
+                ];
+            }
+        }
+
         $criteriaPoint = CriteriaPoint::create([
             'criteria_id' => $request->criteria_id,
             'title' => $request->title,
             'description' => $request->description,
             'max_score' => $request->max_score,
+            'order_index' => $request->order_index,
+            'rubrics' => !empty($rubrics) ? $rubrics : null,
         ]);
 
         ActivityLog::create([
@@ -1027,8 +1072,12 @@ class CoordinatorProdiController extends Controller
             'created_at' => now(),
         ]);
 
-        return redirect('/coordinator-prodi/criteria-points')
-            ->with('success', 'Poin kriteria berhasil dibuat.');
+        if ($request->get('return_to') === 'standards' && $request->filled('program_id')) {
+            return redirect()->route('coordinator-prodi.standards', ['program_id' => $request->get('program_id')])
+                ->with('success', 'Poin kriteria berhasil dibuat.');
+        }
+
+        return redirect('/coordinator-prodi/criteria-points')->with('success', 'Poin kriteria berhasil dibuat.');
     }
 
     /**
@@ -1057,6 +1106,8 @@ class CoordinatorProdiController extends Controller
                 'title' => $criteriaPoint->title,
                 'description' => $criteriaPoint->description,
                 'max_score' => $criteriaPoint->max_score,
+                'order_index' => $criteriaPoint->order_index,
+                'rubrics' => $criteriaPoint->rubrics,
                 'criterion' => [
                     'name' => $criteriaPoint->criterion?->name ?? 'N/A',
                     'standard' => $criteriaPoint->criterion?->standard?->name ?? 'N/A',
@@ -1074,11 +1125,24 @@ class CoordinatorProdiController extends Controller
     {
         $criteriaPoint = CriteriaPoint::findOrFail($id);
 
+        $rubrics = [];
+        foreach ([4, 3, 2, 1] as $score) {
+            $key = 'rubric_' . $score;
+            if ($request->filled($key)) {
+                $rubrics[] = [
+                    'score' => $score,
+                    'description' => $request->get($key),
+                ];
+            }
+        }
+
         $criteriaPoint->update([
             'criteria_id' => $request->criteria_id,
             'title' => $request->title,
             'description' => $request->description,
             'max_score' => $request->max_score,
+            'order_index' => $request->order_index,
+            'rubrics' => !empty($rubrics) ? $rubrics : null,
         ]);
 
         ActivityLog::create([
@@ -1136,7 +1200,7 @@ class CoordinatorProdiController extends Controller
         $programs = $user->accessiblePrograms()->get(['id', 'name']);
 
         // If no program_id provided, use first accessible program or show selection
-        if (! $request->filled('program_id')) {
+        if (!$request->filled('program_id')) {
             if ($programs->isEmpty()) {
                 return Inertia::render('Dashboard/CoordinatorProdi/Standards/Index', [
                     'program' => null,
@@ -1153,12 +1217,124 @@ class CoordinatorProdiController extends Controller
 
         $programId = $program->id;
 
-        $program->load(['standards.criteria']);
+        $program->load(['standards.criteria.criteriaPoints']);
 
         return Inertia::render('Dashboard/CoordinatorProdi/Standards/Index', [
             'program' => $program,
             'programs' => $programs,
         ]);
+    }
+
+    public function storeStandard(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'program_id' => ['required', 'string', 'exists:programs,id'],
+            'name' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'weight' => ['required', 'numeric', 'min:0'],
+            'order_index' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $standard = Standard::create([
+            'program_id' => $validated['program_id'],
+            'name' => $validated['name'],
+            'description' => $validated['description'] ?? null,
+            'weight' => $validated['weight'],
+            'order_index' => $validated['order_index'],
+        ]);
+
+        ActivityLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'create',
+            'entity_type' => Standard::class,
+            'entity_id' => (string) $standard->id,
+            'description' => "Membuat standar: {$standard->name}",
+            'ip_address' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+        ]);
+
+        return redirect()->route('coordinator-prodi.standards', ['program_id' => $validated['program_id']])
+            ->with('success', 'Standar berhasil dibuat.');
+    }
+
+    public function storeProgram(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'jenjang' => ['required', 'string', 'max:10'],
+            'fakultas' => ['required', 'string', 'max:255'],
+        ]);
+
+        $program = Program::create([
+            'name' => $validated['name'],
+            'jenjang' => $validated['jenjang'],
+            'fakultas' => $validated['fakultas'],
+        ]);
+
+        ActivityLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'create',
+            'entity_type' => Program::class,
+            'entity_id' => (string) $program->id,
+            'description' => "Membuat program studi: {$program->name}",
+            'ip_address' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+        ]);
+
+        return redirect()->route('coordinator-prodi.standards', ['program_id' => $program->id])
+            ->with('success', 'Program studi berhasil dibuat.');
+    }
+
+    public function updateCriteriaPointsBaseScale(Request $request, int $id): RedirectResponse
+    {
+        $user = $this->getUser();
+        $program = $user->accessiblePrograms()->findOrFail($id);
+
+        $validated = $request->validate([
+            'criteria_points_base_scale' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $program->update([
+            'criteria_points_base_scale' => $validated['criteria_points_base_scale'],
+        ]);
+
+        ActivityLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'update',
+            'entity_type' => Program::class,
+            'entity_id' => (string) $program->id,
+            'description' => "Memperbarui skala bobot kriteria poin: {$program->criteria_points_base_scale}",
+            'ip_address' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+        ]);
+
+        return back()->with('success', 'Skala bobot poin kriteria berhasil diperbarui.');
+    }
+
+    public function updateLamName(Request $request, int $id): RedirectResponse
+    {
+        $user = $this->getUser();
+        $program = $user->accessiblePrograms()->findOrFail($id);
+
+        $validated = $request->validate([
+            'lam_name' => ['required', 'string', 'max:255'],
+        ]);
+
+        $program->update([
+            'lam_name' => $validated['lam_name'],
+        ]);
+
+        ActivityLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'update',
+            'entity_type' => Program::class,
+            'entity_id' => (string) $program->id,
+            'description' => "Memperbarui nama LAM: {$program->lam_name}",
+            'ip_address' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+        ]);
+
+        return back()->with('success', 'Nama LAM berhasil diperbarui.');
     }
 
     /**
@@ -1170,7 +1346,7 @@ class CoordinatorProdiController extends Controller
         $programs = $user->accessiblePrograms()->get(['id', 'name']);
 
         // If no program_id provided, use first accessible program or show selection
-        if (! $request->filled('program_id')) {
+        if (!$request->filled('program_id')) {
             if ($programs->isEmpty()) {
                 return $this->renderEmptyScoreRecap();
             }
@@ -1331,8 +1507,8 @@ class CoordinatorProdiController extends Controller
     private function buildScoreRecapChartData(array $recapData): array
     {
         $scorePerCriteria = collect($recapData['standards'])
-            ->flatMap(fn ($std) => $std['criteria'])
-            ->map(fn ($crit) => [
+            ->flatMap(fn($std) => $std['criteria'])
+            ->map(fn($crit) => [
                 'name' => $crit['criteria_name'],
                 'score' => $crit['score'],
                 'max_score' => $crit['max_score'],
@@ -1341,7 +1517,7 @@ class CoordinatorProdiController extends Controller
             ->toArray();
 
         $scorePerStandard = collect($recapData['standards'])
-            ->map(fn ($std) => [
+            ->map(fn($std) => [
                 'name' => $std['standard_name'],
                 'score' => $std['total_score'],
                 'max_score' => $std['max_score'],
@@ -1596,7 +1772,7 @@ class CoordinatorProdiController extends Controller
         $user = $this->getUser();
         $prodi = $user->prodi;
 
-        if (! $prodi) {
+        if (!$prodi) {
             return redirect()->route('coordinator-prodi.index')
                 ->with('error', 'Prodi tidak ditemukan');
         }
@@ -1631,7 +1807,7 @@ class CoordinatorProdiController extends Controller
         $user = $this->getUser();
         $prodi = $user->prodi;
 
-        if (! $prodi) {
+        if (!$prodi) {
             return redirect()->route('coordinator-prodi.index')
                 ->with('error', 'Prodi tidak ditemukan');
         }
@@ -1658,7 +1834,7 @@ class CoordinatorProdiController extends Controller
                     },
                 ])->find($cycleId);
 
-            if (! $cycle) {
+            if (!$cycle) {
                 return redirect()->route('coordinator-prodi.accreditation.cycles')
                     ->with('error', 'Siklus akreditasi tidak ditemukan atau tidak memiliki akses.');
             }
@@ -1687,7 +1863,7 @@ class CoordinatorProdiController extends Controller
                 ->first();
 
             // Jika tidak ada active cycle, ambil cycle terbaru
-            if (! $cycle) {
+            if (!$cycle) {
                 $cycle = \App\Models\AccreditationCycle::where('prodi_id', $prodi->id)
                     ->with([
                         'lam' => function ($query) {
@@ -1796,7 +1972,7 @@ class CoordinatorProdiController extends Controller
         $user = $this->getUser();
         $prodi = $user->prodi;
 
-        if (! $prodi) {
+        if (!$prodi) {
             return redirect()->route('coordinator-prodi.index')
                 ->with('error', 'Prodi tidak ditemukan');
         }
@@ -1817,7 +1993,7 @@ class CoordinatorProdiController extends Controller
                 ->with('lam')
                 ->find($cycleId);
 
-            if (! $cycle) {
+            if (!$cycle) {
                 return redirect()->route('coordinator-prodi.accreditation.simulation')
                     ->with('error', 'Siklus akreditasi tidak ditemukan atau tidak memiliki akses.');
             }
@@ -1962,7 +2138,7 @@ class CoordinatorProdiController extends Controller
         $user = $this->getUser();
         $prodi = $user->prodi;
 
-        if (! $prodi) {
+        if (!$prodi) {
             return redirect()->route('coordinator-prodi.index')
                 ->with('error', 'Prodi tidak ditemukan');
         }
@@ -1973,7 +2149,7 @@ class CoordinatorProdiController extends Controller
                 ->with('lam')
                 ->find($cycleId);
 
-            if (! $cycle) {
+            if (!$cycle) {
                 return redirect()->route('coordinator-prodi.accreditation.cycles')
                     ->with('error', 'Siklus akreditasi tidak ditemukan atau tidak memiliki akses.');
             }
@@ -1985,7 +2161,7 @@ class CoordinatorProdiController extends Controller
                 ->first();
 
             // Jika tidak ada active cycle, ambil cycle terbaru
-            if (! $cycle) {
+            if (!$cycle) {
                 $cycle = \App\Models\AccreditationCycle::where('prodi_id', $prodi->id)
                     ->with('lam')
                     ->orderBy('created_at', 'desc')

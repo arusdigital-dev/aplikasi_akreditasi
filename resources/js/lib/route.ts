@@ -110,6 +110,10 @@ export function route(name: string, params?: Record<string, any> | string | numb
         'coordinator-prodi.simulation': { url: () => '/coordinator-prodi/simulation' },
         'coordinator-prodi.criteria-points': { url: () => '/coordinator-prodi/criteria-points' },
         'coordinator-prodi.standards': { url: () => '/coordinator-prodi/standards' },
+        'coordinator-prodi.standards.store': { url: () => '/coordinator-prodi/standards', method: 'post' },
+        'coordinator-prodi.programs.store': { url: () => '/coordinator-prodi/programs', method: 'post' },
+        'coordinator-prodi.programs.criteria-points.base-scale.update': { url: (id: string | number) => `/coordinator-prodi/programs/${id}/criteria-points/base-scale`, method: 'put' },
+        'coordinator-prodi.programs.lam-name.update': { url: (id: string | number) => `/coordinator-prodi/programs/${id}/lam-name`, method: 'put' },
         'coordinator-prodi.criteria.index': { url: () => '/coordinator-prodi/criteria' },
         'coordinator-prodi.criteria.create': { url: () => '/coordinator-prodi/criteria/create' },
         'coordinator-prodi.criteria.store': { url: () => '/coordinator-prodi/criteria', method: 'post' },
@@ -214,6 +218,8 @@ export function route(name: string, params?: Record<string, any> | string | numb
         'admin-lpmpp.simulations.index': { url: () => '/admin-lpmpp/simulations' },
         // LAM management
         'admin-lpmpp.lam.index': { url: () => '/admin-lpmpp/lam' },
+        'admin-lpmpp.lam.create': { url: () => '/admin-lpmpp/lam/create' },
+        'admin-lpmpp.lam.store': { url: () => '/admin-lpmpp/lam', method: 'post' },
         'admin-lpmpp.lam.edit': { url: (id: string | number) => `/admin-lpmpp/lam/${id}/edit` },
         'admin-lpmpp.lam.structure.update': { url: (id: string | number) => `/admin-lpmpp/lam/${id}/structure`, method: 'post' },
         // Alias untuk assessor-assignments (menggunakan route admin-lpmpp.assignments)

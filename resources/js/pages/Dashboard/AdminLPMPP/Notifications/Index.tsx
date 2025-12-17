@@ -2,6 +2,7 @@ import { Head } from '@inertiajs/react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import { useForm } from '@inertiajs/react';
 import { route } from '@/lib/route';
+import { useState } from 'react';
 
 interface Notification {
     id: string;
@@ -12,10 +13,13 @@ interface Notification {
     sent_at: string | null;
     user: {
         name: string;
+        email?: string;
     } | null;
     unit: {
         name: string;
     } | null;
+    channel?: string;
+    data?: Record<string, any>;
 }
 
 interface Props {
@@ -47,6 +51,8 @@ export default function NotificationsIndex({ notifications, filters }: Props) {
         channels: ['in_app'] as string[],
     });
 
+    const [unitIdsText, setUnitIdsText] = useState('');
+
     const handleSendReminder = (e: React.FormEvent) => {
         e.preventDefault();
         post(route('admin-lpmpp.notifications.send-reminder'));
@@ -57,10 +63,42 @@ export default function NotificationsIndex({ notifications, filters }: Props) {
         postBroadcast(route('admin-lpmpp.notifications.send-broadcast'));
     };
 
+    const toggleChannel = (ch: string) => {
+        const current = broadcastData.channels || [];
+        if (current.includes(ch)) {
+            setBroadcastData('channels', current.filter((c) => c !== ch));
+        } else {
+            setBroadcastData('channels', [...current, ch]);
+        }
+    };
+
+    const renderChannelLabel = (ch?: string) => {
+        switch (ch) {
+            case 'email':
+                return 'Email';
+            case 'whatsapp':
+                return 'WhatsApp';
+            case 'in_app':
+                return 'In-App';
+            default:
+                return 'Unknown';
+        }
+    };
+
+    const formatNotification = (n: Notification) => {
+        const isAssessorAssignment = n.type === 'assessor_assignment';
+        const displayTitle = isAssessorAssignment ? 'Penugasan Asesor oleh Admin LPMPP' : n.title;
+        const cycleName = n.data?.cycle_name ?? null;
+        const displayMessage = isAssessorAssignment
+            ? `Admin LPMPP menugaskan Anda sebagai Asesor pada siklus akreditasi${cycleName ? `: ${cycleName}` : ''}.`
+            : n.message;
+        return { displayTitle, displayMessage };
+    };
+
     return (
         <>
             <Head title="Notifikasi" />
-            <DashboardLayout title="Notifikasi" subtitle="Kelola notifikasi otomatis dan broadcast">
+            <DashboardLayout title="Notifikasi" subtitle="Admin LPMPP mengirim pengingat dan broadcast ke unit/asesor">
                 <div className="space-y-6">
                     {/* Send Reminder */}
                     <div className="bg-white rounded-lg shadow p-6">
@@ -90,6 +128,16 @@ export default function NotificationsIndex({ notifications, filters }: Props) {
                                         <option value="7">7 Hari</option>
                                     </select>
                                 </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Pesan (opsional)</label>
+                                    <input
+                                        type="text"
+                                        value={data.message}
+                                        onChange={(e) => setData('message', e.target.value)}
+                                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                                        placeholder="Contoh: Mohon segera selesaikan penilaian."
+                                    />
+                                </div>
                                 <div className="flex items-end">
                                     <button
                                         type="submit"
@@ -107,6 +155,70 @@ export default function NotificationsIndex({ notifications, filters }: Props) {
                     <div className="bg-white rounded-lg shadow p-6">
                         <h2 className="text-lg font-semibold text-gray-900 mb-4">Kirim Broadcast</h2>
                         <form onSubmit={handleSendBroadcast} className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Tipe</label>
+                                    <select
+                                        value={broadcastData.type}
+                                        onChange={(e) => setBroadcastData('type', e.target.value)}
+                                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                                        required
+                                    >
+                                        <option value="broadcast_lpmpp">Broadcast LPMPP</option>
+                                        <option value="accreditation_schedule">Jadwal Akreditasi</option>
+                                        <option value="policy_update">Pembaruan Kebijakan</option>
+                                        <option value="document_issue">Dokumen Bermasalah</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Unit IDs (dipisahkan koma)</label>
+                                    <input
+                                        type="text"
+                                        value={unitIdsText}
+                                        onChange={(e) => {
+                                            const text = e.target.value;
+                                            setUnitIdsText(text);
+                                            const arr = text
+                                                .split(',')
+                                                .map((v) => v.trim())
+                                                .filter((v) => v !== '');
+                                            setBroadcastData('unit_ids', arr);
+                                        }}
+                                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                                        placeholder="contoh: unit-uuid-1,unit-uuid-2"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Saluran</label>
+                                    <div className="mt-2 flex items-center gap-3">
+                                        <label className="inline-flex items-center gap-2 text-sm">
+                                            <input
+                                                type="checkbox"
+                                                checked={broadcastData.channels?.includes('in_app') ?? false}
+                                                onChange={() => toggleChannel('in_app')}
+                                            />
+                                            In-App
+                                        </label>
+                                        <label className="inline-flex items-center gap-2 text-sm">
+                                            <input
+                                                type="checkbox"
+                                                checked={broadcastData.channels?.includes('email') ?? false}
+                                                onChange={() => toggleChannel('email')}
+                                            />
+                                            Email
+                                        </label>
+                                        <label className="inline-flex items-center gap-2 text-sm">
+                                            <input
+                                                type="checkbox"
+                                                checked={broadcastData.channels?.includes('whatsapp') ?? false}
+                                                onChange={() => toggleChannel('whatsapp')}
+                                            />
+                                            WhatsApp
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">Judul</label>
                                 <input
@@ -150,10 +262,17 @@ export default function NotificationsIndex({ notifications, filters }: Props) {
                                     <div key={notification.id} className="p-6">
                                         <div className="flex justify-between items-start">
                                             <div>
-                                                <h3 className="text-sm font-medium text-gray-900">{notification.title}</h3>
-                                                <p className="mt-1 text-sm text-gray-500">{notification.message}</p>
+                                                <h3 className="text-sm font-medium text-gray-900">
+                                                    {formatNotification(notification).displayTitle}
+                                                </h3>
+                                                <p className="mt-1 text-sm text-gray-500">
+                                                    {formatNotification(notification).displayMessage}
+                                                </p>
                                                 <p className="mt-2 text-xs text-gray-400">
-                                                    {notification.user?.name} - {notification.unit?.name}
+                                                    Penerima: {notification.user?.name}
+                                                    {notification.user?.email ? ` (${notification.user.email})` : ''}
+                                                    {notification.unit?.name ? ` • Unit: ${notification.unit.name}` : ''}
+                                                    {notification.channel ? ` • Kanal: ${renderChannelLabel(notification.channel)}` : ''}
                                                 </p>
                                             </div>
                                             <span

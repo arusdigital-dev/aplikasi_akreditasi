@@ -13,7 +13,7 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        
+
 
         $this->call([
             FakultasSeeder::class,
@@ -23,6 +23,8 @@ class DatabaseSeeder extends Seeder
             CoordinatorProdiSeeder::class,
             AssessorInternalSeeder::class,
             PimpinanUniversitasSeeder::class,
+            LAMSeeder::class,
+            CriteriaPointSeeder::class,
         ]);
     }
 }

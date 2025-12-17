@@ -225,6 +225,17 @@ export default function AdminLPMPPLAMEdit({ lam, standards: initialStandards }: 
                         {error && <div className="mb-4 text-sm text-red-600">{error}</div>}
                         {success && <div className="mb-4 text-sm text-green-700">{success}</div>}
                         <div className="space-y-6">
+                            {standards.length === 0 && (
+                                <div className="border border-dashed border-gray-300 rounded-lg p-8 text-center">
+                                    <div className="text-gray-600 text-sm">Belum ada standar untuk LAM ini.</div>
+                                    <button
+                                        onClick={addStandard}
+                                        className="mt-4 px-4 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700"
+                                    >
+                                        Tambah Standard
+                                    </button>
+                                </div>
+                            )}
                             {standards.map((std, sIndex) => (
                                 <div key={sIndex} className="border rounded-lg p-4">
                                     <div className="flex items-center justify-between">

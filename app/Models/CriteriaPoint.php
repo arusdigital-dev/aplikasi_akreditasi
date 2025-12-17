@@ -21,6 +21,8 @@ class CriteriaPoint extends Model
         'title',
         'description',
         'max_score',
+        'order_index',
+        'rubrics',
     ];
 
     /**
@@ -32,6 +34,7 @@ class CriteriaPoint extends Model
     {
         return [
             'max_score' => 'decimal:2',
+            'rubrics' => 'array',
         ];
     }
 

@@ -51,32 +51,6 @@ export default function Sidebar() {
                         Operations
                     </div>
                     <Link
-                        href={route('admin-lpmpp.progress-summary')}
-                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
-                            isActive('/admin-lpmpp/progress-summary')
-                                ? 'text-white bg-blue-600 font-medium'
-                                : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                        </svg>
-                        Progress Akreditasi
-                    </Link>
-                    <Link
-                        href={route('admin-lpmpp.assignments.index')}
-                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
-                            isActive('/admin-lpmpp/assignments')
-                                ? 'text-white bg-blue-600 font-medium'
-                                : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                        </svg>
-                        Penugasan Asesor
-                    </Link>
-                    <Link
                         href={route('admin-lpmpp.accreditation-assessor-assignments.index')}
                         className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
                             isActive('/admin-lpmpp/accreditation-assessor-assignments')
@@ -103,19 +77,6 @@ export default function Sidebar() {
                         Kelola Asesor Eksternal
                     </Link>
                     <Link
-                        href={route('admin-lpmpp.lam.index')}
-                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
-                            isActive('/admin-lpmpp/lam')
-                                ? 'text-white bg-blue-600 font-medium'
-                                : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                        </svg>
-                        Kelola LAM
-                    </Link>
-                    <Link
                         href={route('admin-lpmpp.simulations.index')}
                         className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
                             isActive('/admin-lpmpp/simulations')
@@ -127,19 +88,6 @@ export default function Sidebar() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3v2a4 4 0 004 4h2m-6 10v-2a4 4 0 00-4-4H5m14 0h-2a4 4 0 00-4 4v2M7 7h.01M7 17h.01M17 7h.01" />
                         </svg>
                         Hasil Simulasi
-                    </Link>
-                    <Link
-                        href={route('admin-lpmpp.statistics.index')}
-                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
-                            isActive('/admin-lpmpp/statistics')
-                                ? 'text-white bg-blue-600 font-medium'
-                                : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                        </svg>
-                        Rekap & Statistik
                     </Link>
                     <Link
                         href={route('admin-lpmpp.employees.index')}

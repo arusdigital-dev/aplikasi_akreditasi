@@ -110,6 +110,8 @@ Route::middleware('auth')->group(function () {
 
         // Kelola LAM
         Route::get('/lam', [AdminLPMPPController::class, 'lamIndex'])->name('lam.index');
+        Route::get('/lam/create', [AdminLPMPPController::class, 'lamCreate'])->name('lam.create');
+        Route::post('/lam', [AdminLPMPPController::class, 'lamStore'])->name('lam.store');
         Route::get('/lam/{id}/edit', [AdminLPMPPController::class, 'lamEdit'])->name('lam.edit');
         Route::post('/lam/{id}/structure', [AdminLPMPPController::class, 'updateLAMStructure'])->name('lam.structure.update');
 
@@ -212,6 +214,10 @@ Route::middleware('auth')->group(function () {
 
         // Standar Akreditasi
         Route::get('/standards', [CoordinatorProdiController::class, 'standards'])->name('standards');
+        Route::post('/standards', [CoordinatorProdiController::class, 'storeStandard'])->name('standards.store');
+        Route::post('/programs', [CoordinatorProdiController::class, 'storeProgram'])->name('programs.store');
+        Route::put('/programs/{id}/criteria-points/base-scale', [CoordinatorProdiController::class, 'updateCriteriaPointsBaseScale'])->name('programs.criteria-points.base-scale.update');
+        Route::put('/programs/{id}/lam-name', [CoordinatorProdiController::class, 'updateLamName'])->name('programs.lam-name.update');
 
         // Kriteria
         Route::get('/criteria', [CoordinatorProdiController::class, 'criteria'])->name('criteria.index');

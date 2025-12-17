@@ -1514,6 +1514,71 @@ class AdminLPMPPController extends Controller
     }
 
     /**
+     * Form tambah LAM baru.
+     */
+    public function lamCreate(): Response
+    {
+        return Inertia::render('Dashboard/AdminLPMPP/LAM/Create', [
+            'defaults' => [
+                'min_score_scale' => 1,
+                'max_score_scale' => 4,
+                'is_active' => true,
+                'accreditation_levels' => ['Unggul', 'Baik Sekali', 'Baik', 'Tidak Terakreditasi'],
+            ],
+        ]);
+    }
+
+    /**
+     * Simpan LAM baru.
+     */
+    public function lamStore(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:100', 'unique:lams,name'],
+            'code' => ['required', 'string', 'max:50', 'unique:lams,code'],
+            'description' => ['nullable', 'string'],
+            'min_score_scale' => ['required', 'integer', 'min:0', 'max:10'],
+            'max_score_scale' => ['required', 'integer', 'min:1', 'max:10'],
+            'is_active' => ['sometimes', 'boolean'],
+            'accreditation_levels' => ['nullable'],
+        ]);
+
+        if ((int) $validated['max_score_scale'] < (int) $validated['min_score_scale']) {
+            return redirect()->back()
+                ->withErrors(['max_score_scale' => 'Maksimal skala harus ≥ minimal skala'])
+                ->withInput();
+        }
+
+        $levels = null;
+        if ($request->has('accreditation_levels') && $request->accreditation_levels !== null) {
+            if (is_array($request->accreditation_levels)) {
+                $levels = array_values(array_filter(array_map(fn ($v) => is_string($v) ? trim($v) : $v, $request->accreditation_levels), fn ($v) => (string) $v !== ''));
+            } else {
+                $levels = collect(explode(',', (string) $request->accreditation_levels))
+                    ->map(fn ($v) => trim($v))
+                    ->filter(fn ($v) => $v !== '')
+                    ->values()
+                    ->all();
+            }
+        }
+
+        $lam = LAM::create([
+            'name' => $validated['name'],
+            'code' => $validated['code'],
+            'description' => $validated['description'] ?? null,
+            'min_score_scale' => (int) $validated['min_score_scale'],
+            'max_score_scale' => (int) $validated['max_score_scale'],
+            'accreditation_levels' => $levels,
+            'is_active' => (bool) ($validated['is_active'] ?? true),
+        ]);
+
+        $this->logActivity('created', 'LAM', (string) $lam->id, "Menambahkan LAM baru: {$lam->code} - {$lam->name}");
+
+        return redirect()->route('admin-lpmpp.lam.edit', $lam->id)
+            ->with('success', 'LAM baru berhasil dibuat. Silakan susun struktur standar, elemen, indikator, dan rubrik.');
+    }
+
+    /**
      * Edit struktur LAM: standar, elemen, indikator, rubrik.
      */
     public function lamEdit(string $id): Response
