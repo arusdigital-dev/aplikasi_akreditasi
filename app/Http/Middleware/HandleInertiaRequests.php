@@ -44,6 +44,7 @@ class HandleInertiaRequests extends Middleware
         $isCoordinator = false;
         $isAssessorInternal = false;
         $isPimpinan = false;
+        $isAssessorExternal = false;
         $pimpinanLevel = null;
 
         if ($user) {
@@ -62,6 +63,7 @@ class HandleInertiaRequests extends Middleware
             $isCoordinator = $user->isCoordinatorProdi();
             $isAssessorInternal = $user->isAssessorInternal();
             $isPimpinan = $user->isPimpinan();
+            $isAssessorExternal = $user->isAssessorExternal();
             $pimpinanLevel = $user->getPimpinanLevel();
 
             // Get primary role name
@@ -71,6 +73,8 @@ class HandleInertiaRequests extends Middleware
                 $userRole = 'Koordinator Prodi';
             } elseif ($isAssessorInternal) {
                 $userRole = 'Asesor Internal';
+            } elseif ($isAssessorExternal) {
+                $userRole = 'Asesor Eksternal';
             } elseif ($isPimpinan) {
                 if ($user->isRektor()) {
                     $userRole = 'Rektor';
@@ -98,6 +102,7 @@ class HandleInertiaRequests extends Middleware
                 'isAdmin' => $isAdmin,
                 'isCoordinator' => $isCoordinator,
                 'isAssessorInternal' => $isAssessorInternal,
+                'isAssessorExternal' => $isAssessorExternal,
                 'isPimpinan' => $isPimpinan,
                 'pimpinanLevel' => $pimpinanLevel,
             ],

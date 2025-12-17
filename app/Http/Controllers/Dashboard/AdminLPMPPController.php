@@ -30,18 +30,26 @@ use App\Models\Prodi;
 use App\Models\Program;
 use App\Models\Report;
 use App\Models\Role;
+use App\Models\LAM;
+use App\Models\LAMStandard;
+use App\Models\LAMElement;
+use App\Models\LAMIndicator;
+use App\Models\LAMRubric;
 use App\Models\Unit;
 use App\Models\UnitType;
 use App\Models\User;
+use App\Models\AccreditationSimulation;
 use App\Services\NotificationService;
 use App\Services\ReportService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Hash;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -94,7 +102,7 @@ class AdminLPMPPController extends Controller
                 }
 
                 return [
-                    'assessor_name' => 'Asesor #'.$assignment->assessor_id, // TODO: Get from User model
+                    'assessor_name' => 'Asesor #' . $assignment->assessor_id, // TODO: Get from User model
                     'program_name' => $assignment->criterion?->standard?->program?->name ?? 'N/A',
                     'criteria_name' => $assignment->criterion?->name ?? 'N/A',
                     'assigned_date' => $assignedDate,
@@ -111,7 +119,7 @@ class AdminLPMPPController extends Controller
                 // Calculate progress based on standards/criteria completion
                 // This is a placeholder - adjust based on your business logic
                 $progress = rand(40, 95); // Placeholder
-
+    
                 return [
                     'name' => $unit->name,
                     'type' => $unit->type->value ?? 'unit',
@@ -183,7 +191,7 @@ class AdminLPMPPController extends Controller
         $kurang = 0;
 
         foreach ($programs as $program) {
-            $totalCriteria = $program->standards->sum(fn ($standard) => $standard->criteria->count());
+            $totalCriteria = $program->standards->sum(fn($standard) => $standard->criteria->count());
             $completedCriteria = $program->standards->sum(function ($standard) {
                 return $standard->criteria->sum(function ($criterion) {
                     return $criterion->assignments->where('status', 'completed')->count();
@@ -287,7 +295,7 @@ class AdminLPMPPController extends Controller
 
             foreach ($programs as $program) {
                 $program->load(['standards.criteria.assignments']);
-                $totalCriteria += $program->standards->sum(fn ($standard) => $standard->criteria->count());
+                $totalCriteria += $program->standards->sum(fn($standard) => $standard->criteria->count());
                 $completedCriteria += $program->standards->sum(function ($standard) {
                     return $standard->criteria->sum(function ($criterion) {
                         return $criterion->assignments->where('status', 'completed')->count();
@@ -330,7 +338,7 @@ class AdminLPMPPController extends Controller
         $programs = Program::with(['standards.criteria.assignments'])->get();
 
         return $programs->map(function ($program) {
-            $totalCriteria = $program->standards->sum(fn ($standard) => $standard->criteria->count());
+            $totalCriteria = $program->standards->sum(fn($standard) => $standard->criteria->count());
             $completedCriteria = $program->standards->sum(function ($standard) {
                 return $standard->criteria->sum(function ($criterion) {
                     return $criterion->assignments->where('status', 'completed')->count();
@@ -665,7 +673,7 @@ class AdminLPMPPController extends Controller
         $assessor = null;
         if ($requestModel->preferred_assessor_email) {
             $assessor = User::where('email', $requestModel->preferred_assessor_email)->first();
-            if (! $assessor) {
+            if (!$assessor) {
                 $assessor = User::create([
                     'name' => preg_replace('/@.*/', '', $requestModel->preferred_assessor_email),
                     'email' => $requestModel->preferred_assessor_email,
@@ -673,13 +681,13 @@ class AdminLPMPPController extends Controller
                     'password' => str()->random(12),
                 ]);
             } else {
-                if (! $assessor->is_active) {
+                if (!$assessor->is_active) {
                     $assessor->update(['is_active' => true]);
                 }
             }
 
             $role = Role::where('name', 'Asesor Internal')->first();
-            if ($role && ! $assessor->roles()->where('roles.id', $role->id)->exists()) {
+            if ($role && !$assessor->roles()->where('roles.id', $role->id)->exists()) {
                 $assessor->roles()->attach($role->id);
             }
         }
@@ -789,6 +797,58 @@ class AdminLPMPPController extends Controller
     }
 
     /**
+     * Display latest accreditation simulations across Prodi.
+     */
+    public function simulations(Request $request): Response
+    {
+        $query = AccreditationSimulation::query()
+            ->with(['accreditationCycle.prodi', 'accreditationCycle.lam', 'creator'])
+            ->latest('created_at');
+
+        if ($request->filled('prodi_id')) {
+            $query->whereHas('accreditationCycle.prodi', function ($q) use ($request) {
+                $q->where('id', $request->string('prodi_id')->toString());
+            });
+        }
+
+        if ($request->filled('lam_id')) {
+            $query->whereHas('accreditationCycle.lam', function ($q) use ($request) {
+                $q->where('id', $request->integer('lam_id'));
+            });
+        }
+
+        if ($request->filled('cycle_id')) {
+            $query->where('accreditation_cycle_id', $request->string('cycle_id')->toString());
+        }
+
+        $simulations = $query->paginate(15)->withQueryString()->through(function ($sim) {
+            return [
+                'id' => $sim->id,
+                'cycle' => [
+                    'id' => $sim->accreditationCycle?->id,
+                    'name' => $sim->accreditationCycle?->cycle_name,
+                    'prodi' => $sim->accreditationCycle?->prodi?->name,
+                    'lam' => $sim->accreditationCycle?->lam?->code,
+                ],
+                'total_score' => $sim->total_score,
+                'predicted_result' => $sim->predicted_result,
+                'created_at' => $sim->created_at?->format('Y-m-d H:i'),
+                'created_by' => $sim->creator?->name ?? 'N/A',
+            ];
+        });
+
+        $lams = LAM::orderBy('name')->get(['id', 'name', 'code']);
+        $prodis = Prodi::orderBy('name')->get(['id', 'name']);
+
+        return Inertia::render('Dashboard/AdminLPMPP/Simulations/Index', [
+            'simulations' => $simulations,
+            'lams' => $lams,
+            'prodis' => $prodis,
+            'filters' => $request->only(['prodi_id', 'lam_id', 'cycle_id']),
+        ]);
+    }
+
+    /**
      * Get points summary.
      */
     private function getPointsSummary(?string $programId = null, ?string $unitId = null): array
@@ -797,11 +857,11 @@ class AdminLPMPPController extends Controller
             ->with(['assignment.criterion.standard.program', 'assignment.unit', 'criteriaPoint']);
 
         if ($programId) {
-            $query->whereHas('assignment.criterion.standard', fn ($q) => $q->where('program_id', $programId));
+            $query->whereHas('assignment.criterion.standard', fn($q) => $q->where('program_id', $programId));
         }
 
         if ($unitId) {
-            $query->whereHas('assignment', fn ($q) => $q->where('unit_id', $unitId));
+            $query->whereHas('assignment', fn($q) => $q->where('unit_id', $unitId));
         }
 
         $evaluations = $query->get();
@@ -957,7 +1017,7 @@ class AdminLPMPPController extends Controller
         $this->logActivity('synced', 'employee', null, "Sinkronisasi data pegawai dari {$source}");
 
         return redirect()->route('admin-lpmpp.employees.index')
-            ->with('success', "Sinkronisasi selesai. Created: {$created}, Updated: {$updated}, Errors: ".count($errors));
+            ->with('success', "Sinkronisasi selesai. Created: {$created}, Updated: {$updated}, Errors: " . count($errors));
     }
 
     /**
@@ -999,7 +1059,7 @@ class AdminLPMPPController extends Controller
         try {
             // Ensure reports directory exists
             $reportsDir = storage_path('app/public/reports');
-            if (! is_dir($reportsDir)) {
+            if (!is_dir($reportsDir)) {
                 File::makeDirectory($reportsDir, 0755, true);
             }
 
@@ -1015,8 +1075,8 @@ class AdminLPMPPController extends Controller
             }
 
             // Verify file was created
-            $fullPath = storage_path('app/public/'.$filePath);
-            if (! file_exists($fullPath)) {
+            $fullPath = storage_path('app/public/' . $filePath);
+            if (!file_exists($fullPath)) {
                 throw new \RuntimeException("File tidak ditemukan di path: {$filePath}");
             }
 
@@ -1056,9 +1116,9 @@ class AdminLPMPPController extends Controller
 
             return redirect()->back()
                 ->withInput()
-                ->with('error', 'Gagal membuat laporan: '.$e->getMessage());
+                ->with('error', 'Gagal membuat laporan: ' . $e->getMessage());
         } catch (\Exception $e) {
-            Log::error('Error generating report: '.$e->getMessage(), [
+            Log::error('Error generating report: ' . $e->getMessage(), [
                 'type' => $type,
                 'format' => $format,
                 'program_id' => $programId,
@@ -1068,7 +1128,7 @@ class AdminLPMPPController extends Controller
 
             return redirect()->back()
                 ->withInput()
-                ->with('error', 'Gagal membuat laporan: '.$e->getMessage().'. Silakan coba lagi atau hubungi administrator.');
+                ->with('error', 'Gagal membuat laporan: ' . $e->getMessage() . '. Silakan coba lagi atau hubungi administrator.');
         }
     }
 
@@ -1079,9 +1139,9 @@ class AdminLPMPPController extends Controller
     {
         $report = Report::findOrFail($id);
 
-        $filePath = storage_path('app/public/'.$report->file_path);
+        $filePath = storage_path('app/public/' . $report->file_path);
 
-        if (! file_exists($filePath)) {
+        if (!file_exists($filePath)) {
             return redirect()->route('admin-lpmpp.reports.index')
                 ->with('error', 'File laporan tidak ditemukan.');
         }
@@ -1103,7 +1163,7 @@ class AdminLPMPPController extends Controller
 
         return response()->file($filePath, [
             'Content-Type' => $mimeType,
-            'Content-Disposition' => $disposition.'; filename="'.basename($report->file_path).'"',
+            'Content-Disposition' => $disposition . '; filename="' . basename($report->file_path) . '"',
         ]);
     }
 
@@ -1229,7 +1289,7 @@ class AdminLPMPPController extends Controller
         $type = NotificationType::from($request->type);
         $title = $request->title;
         $message = $request->message;
-        $channels = array_map(fn ($ch) => NotificationChannel::from($ch), $request->channels);
+        $channels = array_map(fn($ch) => NotificationChannel::from($ch), $request->channels);
 
         $units = Unit::whereIn('id', $unitIds)->get();
 
@@ -1280,7 +1340,7 @@ class AdminLPMPPController extends Controller
 
         // Filter wrong format in collection
         if ($request->has('issue_type') && $request->get('issue_type') === 'wrong_format') {
-            $documents = $documents->filter(fn ($doc) => $doc->hasWrongFormat());
+            $documents = $documents->filter(fn($doc) => $doc->hasWrongFormat());
         }
 
         // Set issue_type for each document
@@ -1289,7 +1349,7 @@ class AdminLPMPPController extends Controller
                 $doc->issue_type = 'expired';
             } elseif ($doc->hasWrongFormat()) {
                 $doc->issue_type = 'wrong_format';
-            } elseif (! $doc->validated_at) {
+            } elseif (!$doc->validated_at) {
                 $doc->issue_type = 'not_validated';
             } else {
                 $doc->issue_type = 'other';
@@ -1303,7 +1363,7 @@ class AdminLPMPPController extends Controller
 
         return Inertia::render('Dashboard/AdminLPMPP/ProblemDocuments/Index', [
             'documents' => $documents->values(),
-            'grouped' => $grouped->map(fn ($group) => $group->values())->toArray(),
+            'grouped' => $grouped->map(fn($group) => $group->values())->toArray(),
             'filters' => $request->only(['issue_type', 'unit_id', 'program_id']),
         ]);
     }
@@ -1391,7 +1451,7 @@ class AdminLPMPPController extends Controller
 
         // Check if assessor has External Assessor role
         $assessor = User::findOrFail($validated['assessor_id']);
-        if (! $assessor->roles->contains('name', 'Asesor Eksternal')) {
+        if (!$assessor->roles->contains('name', 'Asesor Eksternal')) {
             return redirect()->back()->with('error', 'User yang dipilih bukan Asesor Eksternal');
         }
 
@@ -1430,6 +1490,366 @@ class AdminLPMPPController extends Controller
         );
 
         return redirect()->back()->with('success', 'Asesor eksternal berhasil di-assign');
+    }
+
+    /**
+     * Kelola LAM - daftar LAM aktif.
+     */
+    public function lamIndex(Request $request): Response
+    {
+        $lams = LAM::orderBy('name')
+            ->get(['id', 'name', 'code', 'description', 'is_active']);
+
+        return Inertia::render('Dashboard/AdminLPMPP/LAM/Index', [
+            'lams' => $lams->map(function ($lam) {
+                return [
+                    'id' => $lam->id,
+                    'name' => $lam->name,
+                    'code' => $lam->code,
+                    'description' => $lam->description,
+                    'is_active' => $lam->is_active,
+                ];
+            }),
+        ]);
+    }
+
+    /**
+     * Edit struktur LAM: standar, elemen, indikator, rubrik.
+     */
+    public function lamEdit(string $id): Response
+    {
+        $lam = LAM::with([
+            'standards' => function ($q) {
+                $q->orderBy('order_index');
+            },
+            'standards.elements' => function ($q) {
+                $q->orderBy('order_index');
+            },
+            'standards.elements.indicators' => function ($q) {
+                $q->orderBy('order_index');
+            },
+            'standards.elements.indicators.rubrics' => function ($q) {
+                $q->orderBy('score', 'desc');
+            },
+        ])->findOrFail($id);
+
+        return Inertia::render('Dashboard/AdminLPMPP/LAM/Edit', [
+            'lam' => [
+                'id' => $lam->id,
+                'name' => $lam->name,
+                'code' => $lam->code,
+                'description' => $lam->description,
+                'min_score_scale' => $lam->min_score_scale,
+                'max_score_scale' => $lam->max_score_scale,
+                'accreditation_levels' => $lam->accreditation_levels,
+            ],
+            'standards' => $lam->standards->map(function ($standard) {
+                return [
+                    'id' => $standard->id,
+                    'code' => $standard->code,
+                    'name' => $standard->name,
+                    'description' => $standard->description,
+                    'weight' => $standard->weight,
+                    'order_index' => $standard->order_index,
+                    'elements' => $standard->elements->map(function ($element) {
+                        return [
+                            'id' => $element->id,
+                            'code' => $element->code,
+                            'name' => $element->name,
+                            'description' => $element->description,
+                            'weight' => $element->weight,
+                            'order_index' => $element->order_index,
+                            'indicators' => $element->indicators->map(function ($indicator) {
+                                return [
+                                    'id' => $indicator->id,
+                                    'code' => $indicator->code,
+                                    'name' => $indicator->name,
+                                    'description' => $indicator->description,
+                                    'document_requirements' => $indicator->document_requirements,
+                                    'weight' => $indicator->weight,
+                                    'order_index' => $indicator->order_index,
+                                    'is_auto_scorable' => $indicator->is_auto_scorable,
+                                    'auto_scoring_rules' => $indicator->auto_scoring_rules,
+                                    'rubrics' => $indicator->rubrics->map(function ($rubric) {
+                                        return [
+                                            'id' => $rubric->id,
+                                            'score' => $rubric->score,
+                                            'label' => $rubric->label,
+                                            'description' => $rubric->description,
+                                            'order_index' => $rubric->order_index,
+                                        ];
+                                    }),
+                                ];
+                            }),
+                        ];
+                    }),
+                ];
+            }),
+        ]);
+    }
+
+    /**
+     * Update struktur LAM dari input Admin LPMPP.
+     */
+    public function updateLAMStructure(Request $request, string $lamId): RedirectResponse
+    {
+        $lam = LAM::findOrFail($lamId);
+
+        $validated = $request->validate([
+            'standards' => 'required|array',
+            'standards.*.id' => 'nullable|integer|exists:lam_standards,id',
+            'standards.*.code' => 'required|string|max:20',
+            'standards.*.name' => 'required|string|max:255',
+            'standards.*.description' => 'nullable|string',
+            'standards.*.weight' => 'nullable|numeric|min:0|max:100',
+            'standards.*.order_index' => 'nullable|integer|min:1',
+            'standards.*.elements' => 'array',
+            'standards.*.elements.*.id' => 'nullable|integer|exists:lam_elements,id',
+            'standards.*.elements.*.code' => 'required|string|max:20',
+            'standards.*.elements.*.name' => 'required|string|max:255',
+            'standards.*.elements.*.description' => 'nullable|string',
+            'standards.*.elements.*.weight' => 'nullable|numeric|min:0|max:400',
+            'standards.*.elements.*.order_index' => 'nullable|integer|min:1',
+            'standards.*.elements.*.indicators' => 'array',
+            'standards.*.elements.*.indicators.*.id' => 'nullable|integer|exists:lam_indicators,id',
+            'standards.*.elements.*.indicators.*.code' => 'required|string|max:20',
+            'standards.*.elements.*.indicators.*.name' => 'required|string|max:255',
+            'standards.*.elements.*.indicators.*.description' => 'nullable|string',
+            'standards.*.elements.*.indicators.*.document_requirements' => 'nullable|array',
+            'standards.*.elements.*.indicators.*.weight' => 'nullable|numeric|min:0|max:100',
+            'standards.*.elements.*.indicators.*.order_index' => 'nullable|integer|min:1',
+            'standards.*.elements.*.indicators.*.is_auto_scorable' => 'nullable|boolean',
+            'standards.*.elements.*.indicators.*.auto_scoring_rules' => 'nullable|array',
+            'standards.*.elements.*.indicators.*.rubrics' => 'array',
+            'standards.*.elements.*.indicators.*.rubrics.*.id' => 'nullable|integer|exists:lam_rubrics,id',
+            'standards.*.elements.*.indicators.*.rubrics.*.score' => 'required|integer|min:1',
+            'standards.*.elements.*.indicators.*.rubrics.*.label' => 'nullable|string|max:100',
+            'standards.*.elements.*.indicators.*.rubrics.*.description' => 'required|string',
+            'standards.*.elements.*.indicators.*.rubrics.*.order_index' => 'nullable|integer|min:1',
+        ]);
+
+        $this->persistLamStructure($lam, $validated['standards']);
+
+        $this->logActivity('lam_structure_updated', 'LAM', $lam->id, "Struktur LAM {$lam->code} diperbarui oleh Admin LPMPP");
+
+        return redirect()->route('admin-lpmpp.lam.edit', $lam->id)->with('success', 'Struktur LAM berhasil diperbarui.');
+    }
+
+    /**
+     * Persist nested LAM structure (standards → elements → indicators → rubrics).
+     */
+    private function persistLamStructure(LAM $lam, array $standards): void
+    {
+        foreach ($standards as $sIndex => $standardData) {
+            $standard = LAMStandard::updateOrCreate(
+                [
+                    'id' => $standardData['id'] ?? null,
+                ],
+                [
+                    'lam_id' => $lam->id,
+                    'code' => $standardData['code'],
+                    'name' => $standardData['name'],
+                    'description' => $standardData['description'] ?? null,
+                    'weight' => $standardData['weight'] ?? 0,
+                    'order_index' => $standardData['order_index'] ?? ($sIndex + 1),
+                ]
+            );
+
+            foreach (($standardData['elements'] ?? []) as $eIndex => $elementData) {
+                $element = LAMElement::updateOrCreate(
+                    [
+                        'id' => $elementData['id'] ?? null,
+                    ],
+                    [
+                        'lam_standard_id' => $standard->id,
+                        'code' => $elementData['code'],
+                        'name' => $elementData['name'],
+                        'description' => $elementData['description'] ?? null,
+                        'weight' => $elementData['weight'] ?? 0,
+                        'order_index' => $elementData['order_index'] ?? ($eIndex + 1),
+                    ]
+                );
+
+                foreach (($elementData['indicators'] ?? []) as $iIndex => $indicatorData) {
+                    $indicator = LAMIndicator::updateOrCreate(
+                        [
+                            'id' => $indicatorData['id'] ?? null,
+                        ],
+                        [
+                            'lam_element_id' => $element->id,
+                            'code' => $indicatorData['code'],
+                            'name' => $indicatorData['name'],
+                            'description' => $indicatorData['description'] ?? null,
+                            'document_requirements' => $indicatorData['document_requirements'] ?? [],
+                            'weight' => $indicatorData['weight'] ?? 0,
+                            'order_index' => $indicatorData['order_index'] ?? ($iIndex + 1),
+                            'is_auto_scorable' => $indicatorData['is_auto_scorable'] ?? false,
+                            'auto_scoring_rules' => $indicatorData['auto_scoring_rules'] ?? null,
+                        ]
+                    );
+
+                    // Ensure 4 rubrics for scores 1..4 if not provided
+                    $rubrics = $indicatorData['rubrics'] ?? [];
+                    if (empty($rubrics)) {
+                        $rubrics = [
+                            ['score' => 4, 'label' => 'Sangat Baik', 'description' => ''],
+                            ['score' => 3, 'label' => 'Baik', 'description' => ''],
+                            ['score' => 2, 'label' => 'Cukup', 'description' => ''],
+                            ['score' => 1, 'label' => 'Kurang', 'description' => ''],
+                        ];
+                    }
+
+                    foreach ($rubrics as $rIndex => $rubricData) {
+                        LAMRubric::updateOrCreate(
+                            [
+                                'id' => $rubricData['id'] ?? null,
+                            ],
+                            [
+                                'lam_indicator_id' => $indicator->id,
+                                'score' => $rubricData['score'],
+                                'label' => $rubricData['label'] ?? null,
+                                'description' => $rubricData['description'] ?? '',
+                                'order_index' => $rubricData['order_index'] ?? ($rIndex + 1),
+                            ]
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Daftar Asesor Eksternal.
+     */
+    public function externalAssessors(Request $request): Response
+    {
+        $query = User::query()
+            ->select(['id', 'name', 'email', 'is_active'])
+            ->whereHas('roles', function ($q) {
+                $q->where('name', 'Asesor Eksternal');
+            });
+
+        if ($request->filled('search')) {
+            $search = $request->string('search')->toString();
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('status')) {
+            $status = $request->string('status')->toString();
+            if (in_array($status, ['active', 'inactive'])) {
+                $query->where('is_active', $status === 'active');
+            }
+        }
+
+        $assessors = $query->latest('created_at')->paginate(15)->withQueryString();
+
+        return Inertia::render('Dashboard/AdminLPMPP/ExternalAssessors/Index', [
+            'assessors' => $assessors,
+            'filters' => $request->only(['search', 'status']),
+        ]);
+    }
+
+    /**
+     * Form buat Asesor Eksternal.
+     */
+    public function createExternalAssessor(): Response
+    {
+        return Inertia::render('Dashboard/AdminLPMPP/ExternalAssessors/Create', []);
+    }
+
+    /**
+     * Simpan Asesor Eksternal baru.
+     */
+    public function storeExternalAssessor(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
+            'password' => ['nullable', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $plainPassword = $validated['password'] ?? Str::random(16);
+        $user = User::create([
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'password' => Hash::make($plainPassword),
+            'is_active' => true,
+        ]);
+
+        $role = Role::where('name', 'Asesor Eksternal')->first();
+        if (!$role) {
+            $role = Role::firstOrCreate(
+                ['name' => 'Asesor Eksternal'],
+                ['description' => 'Asesor akreditasi eksternal']
+            );
+        }
+
+        $user->roles()->syncWithoutDetaching([$role->id]);
+
+        $this->logActivity('created', 'external_assessor', $user->id, 'Membuat akun Asesor Eksternal');
+
+        return redirect()->route('admin-lpmpp.external-assessors.index')
+            ->with('success', 'Asesor Eksternal berhasil dibuat.');
+    }
+
+    /**
+     * Form edit Asesor Eksternal.
+     */
+    public function editExternalAssessor(string $id): Response
+    {
+        $assessor = User::select(['id', 'name', 'email', 'is_active'])->findOrFail($id);
+
+        return Inertia::render('Dashboard/AdminLPMPP/ExternalAssessors/Edit', [
+            'assessor' => $assessor,
+        ]);
+    }
+
+    /**
+     * Perbarui Asesor Eksternal.
+     */
+    public function updateExternalAssessor(Request $request, string $id): RedirectResponse
+    {
+        $assessor = User::findOrFail($id);
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,' . $assessor->id],
+            'is_active' => ['nullable', 'boolean'],
+        ]);
+
+        $assessor->update([
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'is_active' => $validated['is_active'] ?? $assessor->is_active,
+        ]);
+
+        $this->logActivity('updated', 'external_assessor', $assessor->id, 'Memperbarui akun Asesor Eksternal');
+
+        return redirect()->route('admin-lpmpp.external-assessors.index')
+            ->with('success', 'Asesor Eksternal berhasil diperbarui.');
+    }
+
+    /**
+     * Nonaktifkan/hapus Asesor Eksternal.
+     */
+    public function destroyExternalAssessor(string $id): RedirectResponse
+    {
+        $assessor = User::findOrFail($id);
+
+        $role = Role::where('name', 'Asesor Eksternal')->first();
+        if ($role) {
+            $assessor->roles()->detach($role->id);
+        }
+
+        $assessor->update(['is_active' => false]);
+
+        $this->logActivity('deleted', 'external_assessor', $assessor->id, 'Menonaktifkan akun Asesor Eksternal');
+
+        return redirect()->route('admin-lpmpp.external-assessors.index')
+            ->with('success', 'Asesor Eksternal telah dinonaktifkan.');
     }
 
     /**

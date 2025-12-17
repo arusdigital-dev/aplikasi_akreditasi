@@ -66,6 +66,11 @@ class AuthController extends Controller
             return route('assessor-internal.index');
         }
 
+        // Check if user is Assessor External (gunakan dashboard assessor yang sudah ada)
+        if ($user->isAssessorExternal()) {
+            return route('assessor-internal.index');
+        }
+
         // Check if user is Pimpinan
         if ($user->isPimpinan()) {
             return route('pimpinan.dashboard');
@@ -135,7 +140,7 @@ class AuthController extends Controller
 
             if ($user) {
                 // Update google_id if not set
-                if (! $user->google_id) {
+                if (!$user->google_id) {
                     $user->update(['google_id' => $googleUser->getId()]);
                 }
             } else {

@@ -135,8 +135,7 @@ export default function StandardsIndex({ program, programs = [] }: Props) {
                                                     <button
                                                         className="px-2 py-1 bg-blue-600 text-white rounded-md text-xs"
                                                         onClick={() => {
-                                                            router.post(route('coordinator-prodi.assessor-requests.store'), {
-                                                                criteria_id: criterion.id,
+                                                            router.get(route('coordinator-prodi.assessor-requests.create'), {
                                                                 scope_category: assessorScope,
                                                             });
                                                         }}
@@ -211,4 +210,3 @@ export default function StandardsIndex({ program, programs = [] }: Props) {
         </DashboardLayout>
     );
 }
-

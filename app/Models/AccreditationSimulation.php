@@ -51,7 +51,7 @@ class AccreditationSimulation extends Model
         return [
             'indicator_scores' => 'array',
             'standard_scores' => 'array',
-            'total_score' => 'decimal:2',
+            'total_score' => 'float',
             'gap_analysis' => 'array',
         ];
     }

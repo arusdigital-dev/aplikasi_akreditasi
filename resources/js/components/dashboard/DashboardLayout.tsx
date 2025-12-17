@@ -19,6 +19,7 @@ export default function DashboardLayout({ children, title, subtitle }: Dashboard
             isAdmin?: boolean;
             isCoordinator?: boolean;
             isAssessorInternal?: boolean;
+            isAssessorExternal?: boolean;
             isPimpinan?: boolean;
         } | null;
     };
@@ -26,6 +27,7 @@ export default function DashboardLayout({ children, title, subtitle }: Dashboard
     // Determine which sidebar to use
     const isCoordinator = auth?.isCoordinator ?? false;
     const isAssessorInternal = auth?.isAssessorInternal ?? false;
+    const isAssessorExternal = auth?.isAssessorExternal ?? false;
     const isPimpinan = auth?.isPimpinan ?? false;
     const userRole = auth?.role ?? '';
 
@@ -36,7 +38,7 @@ export default function DashboardLayout({ children, title, subtitle }: Dashboard
         if (isCoordinator) {
             return <CoordinatorSidebar />;
         }
-        if (isAssessorInternal) {
+        if (isAssessorInternal || isAssessorExternal) {
             return <AssessorInternalSidebar />;
         }
         return <Sidebar />;
@@ -79,4 +81,3 @@ export default function DashboardLayout({ children, title, subtitle }: Dashboard
         </div>
     );
 }
-

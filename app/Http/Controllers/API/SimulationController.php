@@ -7,18 +7,20 @@ use App\Models\AccreditationCycle;
 use App\Models\AccreditationSimulation;
 use App\Services\SimulationService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 class SimulationController extends Controller
 {
     public function __construct(
         protected SimulationService $simulationService
-    ) {}
+    ) {
+    }
 
     /**
      * Run a new simulation.
      */
-    public function runSimulation(Request $request, string $cycleId): JsonResponse
+    public function runSimulation(Request $request, string $cycleId): RedirectResponse
     {
         $validated = $request->validate([
             'indicator_scores' => 'required|array',
@@ -45,25 +47,22 @@ class SimulationController extends Controller
             'notes' => $validated['notes'] ?? null,
         ]);
 
-        return response()->json([
-            'simulation' => $simulation,
-            'result' => $result,
-        ], 201);
+        return redirect()->route('coordinator-prodi.accreditation.simulation', $cycleId)
+            ->with('success', 'Simulasi berhasil dijalankan.');
     }
 
     /**
      * Run simulation with current scores from database.
      */
-    public function runSimulationWithCurrentScores(Request $request, string $cycleId): JsonResponse
+    public function runSimulationWithCurrentScores(Request $request, string $cycleId): RedirectResponse
     {
         $cycle = AccreditationCycle::with('lam')->findOrFail($cycleId);
 
         $indicatorScores = $this->simulationService->getCurrentScores($cycle);
 
         if (empty($indicatorScores)) {
-            return response()->json([
-                'message' => 'No scores found for this cycle. Please add scores first.',
-            ], 404);
+            return redirect()->route('coordinator-prodi.accreditation.simulation', $cycleId)
+                ->with('error', 'Tidak ada skor untuk siklus ini. Silakan isi skor indikator terlebih dahulu.');
         }
 
         $result = $this->simulationService->runSimulation($cycle, $indicatorScores);
@@ -79,10 +78,8 @@ class SimulationController extends Controller
             'gap_analysis' => $result['gap_analysis'],
         ]);
 
-        return response()->json([
-            'simulation' => $simulation,
-            'result' => $result,
-        ], 201);
+        return redirect()->route('coordinator-prodi.accreditation.simulation', $cycleId)
+            ->with('success', 'Simulasi berhasil dijalankan dengan skor saat ini.');
     }
 
     /**
@@ -106,6 +103,10 @@ class SimulationController extends Controller
         $simulation = AccreditationSimulation::with('creator:id,name,email')
             ->findOrFail($simulationId);
 
-        return response()->json($simulation);
+        $data = $simulation->toArray();
+        if (isset($data['standard_scores']) && is_array($data['standard_scores'])) {
+            $data['standard_scores'] = array_values($data['standard_scores']);
+        }
+        return response()->json($data);
     }
 }

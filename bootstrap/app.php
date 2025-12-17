@@ -24,6 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.lpmpp' => \App\Http\Middleware\EnsureAdminLPMPP::class,
             'coordinator.prodi' => \App\Http\Middleware\EnsureCoordinatorProdi::class,
             'assessor.internal' => \App\Http\Middleware\EnsureAssessorInternal::class,
+            'assessor' => \App\Http\Middleware\EnsureAssessor::class,
             'pimpinan' => \App\Http\Middleware\EnsurePimpinan::class,
         ]);
     })

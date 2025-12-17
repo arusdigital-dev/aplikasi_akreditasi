@@ -16,6 +16,10 @@ use App\Models\EvaluationNoteHistory;
 use App\Models\Prodi;
 use App\Models\Program;
 use App\Models\Unit;
+use App\Models\AccreditationAssessorAssignment;
+use App\Models\AccreditationCycle;
+use App\Models\LAMIndicator;
+use App\Models\ProdiIndicatorScore;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -120,6 +124,215 @@ class AssessorInternalController extends Controller
             'recentAssignments' => $recentAssignments,
             'recentEvaluationNotes' => $recentEvaluationNotes,
         ]);
+    }
+
+    /**
+     * Display accreditation assignments (LAM-based) for the assessor (internal/external).
+     */
+    public function accreditationAssignments(Request $request): Response
+    {
+        $user = Auth::user();
+
+        $query = AccreditationAssessorAssignment::query()
+            ->with(['accreditationCycle.prodi.fakultas', 'accreditationCycle.lam'])
+            ->where('assessor_id', $user->id)
+            ->where('status', '!=', 'cancelled')
+            ->latest('assigned_date');
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->string('status')->toString());
+        }
+
+        $assignments = $query->paginate(15)->withQueryString()->through(function ($a) {
+            return [
+                'id' => $a->id,
+                'cycle' => [
+                    'id' => $a->accreditationCycle?->id,
+                    'name' => $a->accreditationCycle?->cycle_name,
+                    'prodi' => $a->accreditationCycle?->prodi?->name,
+                    'fakultas' => $a->accreditationCycle?->prodi?->fakultas?->name,
+                    'lam' => $a->accreditationCycle?->lam?->code,
+                ],
+                'assigned_date' => $a->assigned_date?->format('Y-m-d'),
+                'deadline' => $a->deadline?->format('Y-m-d'),
+                'status' => $a->status,
+            ];
+        });
+
+        return Inertia::render('Dashboard/AssessorInternal/AccreditationAssignments/Index', [
+            'assignments' => $assignments,
+            'filters' => $request->only(['status']),
+        ]);
+    }
+
+    /**
+     * Show evaluation form for a LAM accreditation assignment.
+     */
+    public function evaluateAccreditationAssignment(Request $request, string $assignmentId): Response
+    {
+        $user = Auth::user();
+
+        $assignment = AccreditationAssessorAssignment::with(['accreditationCycle.prodi.fakultas', 'accreditationCycle.lam'])
+            ->where('id', $assignmentId)
+            ->where('assessor_id', $user->id)
+            ->firstOrFail();
+
+        $cycle = $assignment->accreditationCycle;
+        if (!$cycle) {
+            abort(404, 'Siklus akreditasi tidak ditemukan untuk penugasan ini.');
+        }
+
+        // Load full LAM structure for the cycle
+        $cycle->load([
+            'lam' => function ($query) {
+                $query->with([
+                    'standards' => function ($query) {
+                        $query->orderBy('order_index');
+                    },
+                    'standards.elements' => function ($query) {
+                        $query->orderBy('order_index');
+                    },
+                    'standards.elements.indicators' => function ($query) {
+                        $query->orderBy('order_index');
+                    },
+                    'standards.elements.indicators.rubrics' => function ($query) {
+                        $query->orderBy('score', 'desc');
+                    },
+                ]);
+            },
+            'prodi.fakultas',
+        ]);
+
+        // Existing scores by this assessor for this cycle
+        $scoresByAssessor = ProdiIndicatorScore::where('accreditation_cycle_id', $cycle->id)
+            ->where('assessor_id', $user->id)
+            ->get()
+            ->keyBy('lam_indicator_id')
+            ->map(function ($score) {
+                return [
+                    'id' => $score->id,
+                    'lam_indicator_id' => $score->lam_indicator_id,
+                    'score' => (float) $score->score,
+                    'notes' => $score->notes,
+                    'source' => $score->source,
+                ];
+            });
+
+        return Inertia::render('Dashboard/AssessorInternal/AccreditationAssignments/Evaluate', [
+            'assignment' => [
+                'id' => $assignment->id,
+                'cycle_name' => $cycle->cycle_name,
+                'deadline' => $assignment->deadline?->format('Y-m-d'),
+                'fakultas' => $cycle->prodi?->fakultas?->name ?? 'N/A',
+                'prodi' => $cycle->prodi?->name ?? 'N/A',
+                'status' => $assignment->status,
+            ],
+            'cycle' => [
+                'id' => $cycle->id,
+                'lam' => [
+                    'id' => $cycle->lam?->id,
+                    'name' => $cycle->lam?->name,
+                    'min_score_scale' => $cycle->lam?->min_score_scale,
+                    'max_score_scale' => $cycle->lam?->max_score_scale,
+                    'standards' => $cycle->lam?->standards?->map(function ($standard) {
+                        return [
+                            'id' => $standard->id,
+                            'code' => $standard->code,
+                            'name' => $standard->name,
+                            'weight' => (float) $standard->weight,
+                            'elements' => $standard->elements?->map(function ($element) {
+                                return [
+                                    'id' => $element->id,
+                                    'code' => $element->code,
+                                    'name' => $element->name,
+                                    'weight' => (float) $element->weight,
+                                    'indicators' => $element->indicators?->map(function ($indicator) {
+                                        return [
+                                            'id' => $indicator->id,
+                                            'code' => $indicator->code,
+                                            'name' => $indicator->name,
+                                            'description' => $indicator->description,
+                                            'weight' => (float) $indicator->weight,
+                                            'document_requirements' => $indicator->document_requirements,
+                                            'rubrics' => $indicator->rubrics?->map(function ($rubric) {
+                                                return [
+                                                    'id' => $rubric->id,
+                                                    'score' => (float) $rubric->score,
+                                                    'label' => $rubric->label,
+                                                    'description' => $rubric->description,
+                                                ];
+                                            })->values()->all(),
+                                        ];
+                                    })->values()->all(),
+                                ];
+                            })->values()->all(),
+                        ];
+                    })->values()->all(),
+                ],
+            ],
+            'scoresByAssessor' => $scoresByAssessor->toArray(),
+        ]);
+    }
+
+    /**
+     * Store scores for LAM indicators for a given accreditation assignment.
+     */
+    public function storeAccreditationScores(Request $request, string $assignmentId): RedirectResponse
+    {
+        $user = Auth::user();
+
+        $assignment = AccreditationAssessorAssignment::where('id', $assignmentId)
+            ->where('assessor_id', $user->id)
+            ->firstOrFail();
+
+        $cycle = AccreditationCycle::with('lam')->findOrFail($assignment->accreditation_cycle_id);
+        $min = (float) ($cycle->lam?->min_score_scale ?? 0);
+        $max = (float) ($cycle->lam?->max_score_scale ?? 4);
+
+        $validated = $request->validate([
+            'evaluations' => ['required', 'array', 'min:1'],
+            'evaluations.*.lam_indicator_id' => ['required', 'integer', 'exists:lam_indicators,id'],
+            'evaluations.*.score' => ['required', 'numeric', 'min:' . $min, 'max:' . $max],
+            'evaluations.*.notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $source = $user->isAssessorExternal() ? 'assessor_external' : 'assessor_internal';
+
+        foreach ($validated['evaluations'] as $eval) {
+            ProdiIndicatorScore::updateOrCreate(
+                [
+                    'accreditation_cycle_id' => $cycle->id,
+                    'lam_indicator_id' => $eval['lam_indicator_id'],
+                    'assessor_id' => $user->id,
+                    'source' => $source,
+                ],
+                [
+                    'score' => $eval['score'],
+                    'notes' => $eval['notes'] ?? null,
+                    'recommendations' => null,
+                ]
+            );
+        }
+
+        \App\Models\ActivityLog::create([
+            'user_id' => $user->id,
+            'action' => 'lam_scores_submitted',
+            'description' => 'Menginput skor indikator LAM untuk siklus akreditasi',
+            'entity_type' => AccreditationCycle::class,
+            'entity_id' => (string) $cycle->id,
+            'created_at' => now(),
+        ]);
+
+        return redirect()->route('assessor-internal.accreditation-assignments.index')
+            ->with('success', 'Skor LAM berhasil disimpan.');
+    }
+
+    /**
+     * Update scores for LAM indicators for a given accreditation assignment.
+     */
+    public function updateAccreditationScores(Request $request, string $assignmentId): RedirectResponse
+    {
+        return $this->storeAccreditationScores($request, $assignmentId);
     }
 
     /**

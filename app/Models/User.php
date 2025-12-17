@@ -222,6 +222,18 @@ class User extends Authenticatable
 
         return $this->roles->contains('name', 'Asesor Internal');
     }
+    
+    /**
+     * Check if user has Assessor External role.
+     */
+    public function isAssessorExternal(): bool
+    {
+        if (! $this->relationLoaded('roles')) {
+            $this->load('roles');
+        }
+        
+        return $this->roles->contains('name', 'Asesor Eksternal');
+    }
 
     /**
      * Check if user is Rektor (universitas level).

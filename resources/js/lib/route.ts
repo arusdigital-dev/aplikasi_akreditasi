@@ -6,6 +6,8 @@ export function route(name: string, params?: Record<string, any> | string | numb
     const needsRouteParam = name.includes('.assignments.evaluate') || 
                            name.includes('.assignments.evaluations.') || 
                            name.includes('.evaluation-documents.') ||
+                           name.includes('.accreditation-assignments.evaluate') ||
+                           name.includes('.accreditation-assignments.scores') ||
                            name.includes('.edit') ||
                            name.includes('.show') ||
                            name.includes('.update') ||
@@ -127,6 +129,17 @@ export function route(name: string, params?: Record<string, any> | string | numb
         'coordinator-prodi.accreditation.criteria': { url: (cycleId?: string | number) => cycleId ? `/coordinator-prodi/accreditation/criteria/${cycleId}` : '/coordinator-prodi/accreditation/criteria' },
         'coordinator-prodi.accreditation.simulation': { url: (cycleId?: string | number) => cycleId ? `/coordinator-prodi/accreditation/simulation/${cycleId}` : '/coordinator-prodi/accreditation/simulation' },
         'coordinator-prodi.accreditation.lkps': { url: (cycleId?: string | number) => cycleId ? `/coordinator-prodi/accreditation/lkps/${cycleId}` : '/coordinator-prodi/accreditation/lkps' },
+        // Accreditation API routes
+        'coordinator-prodi.accreditation.cycles.active': { url: () => '/coordinator-prodi/accreditation/cycles/active' },
+        'coordinator-prodi.accreditation.cycles.create': { url: () => '/coordinator-prodi/accreditation/cycles', method: 'post' },
+        'coordinator-prodi.accreditation.cycles.update': { url: (id: string | number) => `/coordinator-prodi/accreditation/cycles/${id}`, method: 'put' },
+        'coordinator-prodi.accreditation.cycles.scores': { url: (id: string | number) => `/coordinator-prodi/accreditation/cycles/${id}/scores` },
+        'coordinator-prodi.accreditation.cycles.scores.save': { url: (id: string | number) => `/coordinator-prodi/accreditation/cycles/${id}/scores`, method: 'post' },
+        'coordinator-prodi.accreditation.simulation.run': { url: (id: string | number) => `/coordinator-prodi/accreditation/cycles/${id}/simulation`, method: 'post' },
+        'coordinator-prodi.accreditation.simulation.run-current': { url: (id: string | number) => `/coordinator-prodi/accreditation/cycles/${id}/simulation/current`, method: 'post' },
+        'coordinator-prodi.accreditation.simulation.history': { url: (id: string | number) => `/coordinator-prodi/accreditation/cycles/${id}/simulation/history` },
+        'coordinator-prodi.accreditation.simulation.show': { url: (id: string | number) => `/coordinator-prodi/accreditation/simulations/${id}` },
+        'coordinator-prodi.accreditation.simulations.show': { url: (id: string | number) => `/coordinator-prodi/accreditation/simulations/${id}` },
         // Assessor Internal routes
         'assessor-internal.index': { url: () => '/assessor-internal' },
         'assessor-internal.dashboard': { url: () => '/assessor-internal' },
@@ -137,6 +150,10 @@ export function route(name: string, params?: Record<string, any> | string | numb
         'assessor-internal.evaluation-documents.index': { url: () => '/assessor-internal/evaluation-documents' },
         'assessor-internal.evaluation-documents.evaluate': { url: (documentId: string | number) => `/assessor-internal/evaluation-documents/${documentId}/evaluate` },
         'assessor-internal.evaluation-documents.history': { url: (documentId: string | number) => `/assessor-internal/evaluation-documents/${documentId}/history` },
+        'assessor-internal.accreditation-assignments.index': { url: () => '/assessor-internal/accreditation-assignments' },
+        'assessor-internal.accreditation-assignments.evaluate': { url: (assignmentId: string | number) => `/assessor-internal/accreditation-assignments/${assignmentId}/evaluate` },
+        'assessor-internal.accreditation-assignments.scores.store': { url: (assignmentId: string | number) => `/assessor-internal/accreditation-assignments/${assignmentId}/scores`, method: 'post' },
+        'assessor-internal.accreditation-assignments.scores.update': { url: (assignmentId: string | number) => `/assessor-internal/accreditation-assignments/${assignmentId}/scores`, method: 'put' },
         'assessor-internal.statistics.per-program': { url: () => '/assessor-internal/statistics/per-program' },
         'assessor-internal.statistics.per-criterion': { url: () => '/assessor-internal/statistics/per-criterion' },
         'assessor-internal.statistics.progress': { url: () => '/assessor-internal/statistics/progress' },
@@ -184,6 +201,21 @@ export function route(name: string, params?: Record<string, any> | string | numb
         'admin-lpmpp.assessor-requests.index': { url: () => '/admin-lpmpp/assessor-requests' },
         'admin-lpmpp.assessor-requests.approve': { url: (id: string | number) => `/admin-lpmpp/assessor-requests/${id}/approve`, method: 'post' },
         'admin-lpmpp.assessor-requests.reject': { url: (id: string | number) => `/admin-lpmpp/assessor-requests/${id}/reject`, method: 'post' },
+        // External assessors management
+        'admin-lpmpp.external-assessors.index': { url: () => '/admin-lpmpp/external-assessors' },
+        'admin-lpmpp.external-assessors.create': { url: () => '/admin-lpmpp/external-assessors/create' },
+        'admin-lpmpp.external-assessors.store': { url: () => '/admin-lpmpp/external-assessors', method: 'post' },
+        'admin-lpmpp.external-assessors.edit': { url: (id: string | number) => `/admin-lpmpp/external-assessors/${id}/edit` },
+        'admin-lpmpp.external-assessors.update': { url: (id: string | number) => `/admin-lpmpp/external-assessors/${id}`, method: 'put' },
+        'admin-lpmpp.external-assessors.destroy': { url: (id: string | number) => `/admin-lpmpp/external-assessors/${id}`, method: 'delete' },
+        // Accreditation assessor assignments (external)
+        'admin-lpmpp.accreditation-assessor-assignments.index': { url: () => '/admin-lpmpp/accreditation-assessor-assignments' },
+        'admin-lpmpp.accreditation-assessor-assignments.assign': { url: () => '/admin-lpmpp/accreditation-assessor-assignments', method: 'post' },
+        'admin-lpmpp.simulations.index': { url: () => '/admin-lpmpp/simulations' },
+        // LAM management
+        'admin-lpmpp.lam.index': { url: () => '/admin-lpmpp/lam' },
+        'admin-lpmpp.lam.edit': { url: (id: string | number) => `/admin-lpmpp/lam/${id}/edit` },
+        'admin-lpmpp.lam.structure.update': { url: (id: string | number) => `/admin-lpmpp/lam/${id}/structure`, method: 'post' },
         // Alias untuk assessor-assignments (menggunakan route admin-lpmpp.assignments)
         'assessor-assignments.index': { url: () => '/admin-lpmpp/assignments' },
         'assessor-assignments.create': { url: () => '/admin-lpmpp/assignments/create' },

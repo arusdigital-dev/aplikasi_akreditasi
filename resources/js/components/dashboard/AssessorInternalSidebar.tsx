@@ -51,6 +51,19 @@ export default function AssessorInternalSidebar() {
                         Evaluasi
                     </div>
                     <Link
+                        href={route('assessor-internal.accreditation-assignments.index')}
+                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
+                            isActive('/assessor-internal/accreditation-assignments')
+                                ? 'text-white bg-blue-600 font-medium'
+                                : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M5 10h14M3 13h18M5 16h14M7 19h10" />
+                        </svg>
+                        Penugasan Akreditasi (LAM)
+                    </Link>
+                    <Link
                         href={route('assessor-internal.assignments.index')}
                         className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
                             isActive('/assessor-internal/assignments')
@@ -177,4 +190,3 @@ export default function AssessorInternalSidebar() {
         </aside>
     );
 }
-

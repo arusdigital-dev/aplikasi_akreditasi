@@ -889,10 +889,38 @@ class CoordinatorProdiController extends Controller
         $user = $this->getUser();
         $programs = $user->accessiblePrograms()->get(['id', 'name']);
         $criteria = Criterion::with(['standard.program'])->get();
+        $cycles = \App\Models\AccreditationCycle::where('prodi_id', $user->prodi_id)
+            ->with([
+                'lam:id,name,code',
+                'prodi:id,name,fakultas_id',
+                'prodi.fakultas:id,name',
+            ])
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($cycle) {
+                return [
+                    'id' => $cycle->id,
+                    'cycle_name' => $cycle->cycle_name,
+                    'lam' => $cycle->lam ? [
+                        'id' => $cycle->lam->id,
+                        'name' => $cycle->lam->name,
+                        'code' => $cycle->lam->code,
+                    ] : null,
+                    'prodi' => $cycle->prodi ? [
+                        'id' => $cycle->prodi->id,
+                        'name' => $cycle->prodi->name,
+                    ] : null,
+                    'fakultas' => $cycle->prodi && $cycle->prodi->fakultas ? [
+                        'id' => $cycle->prodi->fakultas->id,
+                        'name' => $cycle->prodi->fakultas->name,
+                    ] : null,
+                ];
+            });
 
         return Inertia::render('Dashboard/CoordinatorProdi/AssessorRequests/Create', [
             'programs' => $programs,
             'criteria' => $criteria,
+            'cycles' => $cycles,
         ]);
     }
 

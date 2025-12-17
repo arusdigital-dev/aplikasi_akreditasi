@@ -104,6 +104,22 @@ Route::middleware('auth')->group(function () {
         // Penugasan Asesor Akreditasi (LAM-based)
         Route::get('/accreditation-assessor-assignments', [AdminLPMPPController::class, 'accreditationAssessorAssignments'])->name('accreditation-assessor-assignments.index');
         Route::post('/accreditation-assessor-assignments', [AdminLPMPPController::class, 'assignAccreditationAssessor'])->name('accreditation-assessor-assignments.assign');
+
+        // Monitoring Hasil Simulasi
+        Route::get('/simulations', [AdminLPMPPController::class, 'simulations'])->name('simulations.index');
+
+        // Kelola LAM
+        Route::get('/lam', [AdminLPMPPController::class, 'lamIndex'])->name('lam.index');
+        Route::get('/lam/{id}/edit', [AdminLPMPPController::class, 'lamEdit'])->name('lam.edit');
+        Route::post('/lam/{id}/structure', [AdminLPMPPController::class, 'updateLAMStructure'])->name('lam.structure.update');
+
+        // Kelola Asesor Eksternal
+        Route::get('/external-assessors', [AdminLPMPPController::class, 'externalAssessors'])->name('external-assessors.index');
+        Route::get('/external-assessors/create', [AdminLPMPPController::class, 'createExternalAssessor'])->name('external-assessors.create');
+        Route::post('/external-assessors', [AdminLPMPPController::class, 'storeExternalAssessor'])->name('external-assessors.store');
+        Route::get('/external-assessors/{id}/edit', [AdminLPMPPController::class, 'editExternalAssessor'])->name('external-assessors.edit');
+        Route::put('/external-assessors/{id}', [AdminLPMPPController::class, 'updateExternalAssessor'])->name('external-assessors.update');
+        Route::delete('/external-assessors/{id}', [AdminLPMPPController::class, 'destroyExternalAssessor'])->name('external-assessors.destroy');
     });
 
     // ========================================================================
@@ -118,9 +134,15 @@ Route::middleware('auth')->group(function () {
     // ========================================================================
     // ROUTE ASSESSOR INTERNAL
     // ========================================================================
-    Route::prefix('assessor-internal')->name('assessor-internal.')->middleware('assessor.internal')->group(function () {
+    Route::prefix('assessor-internal')->name('assessor-internal.')->middleware('assessor')->group(function () {
         // Dashboard
         Route::get('/', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'dashboard'])->name('index');
+
+        // Penugasan Akreditasi (LAM-based)
+        Route::get('/accreditation-assignments', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'accreditationAssignments'])->name('accreditation-assignments.index');
+        Route::get('/accreditation-assignments/{assignmentId}/evaluate', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'evaluateAccreditationAssignment'])->name('accreditation-assignments.evaluate');
+        Route::post('/accreditation-assignments/{assignmentId}/scores', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'storeAccreditationScores'])->name('accreditation-assignments.scores.store');
+        Route::match(['put', 'patch'], '/accreditation-assignments/{assignmentId}/scores', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'updateAccreditationScores'])->name('accreditation-assignments.scores.update');
 
         // Evaluasi Dokumen
         Route::get('/evaluation-documents', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'index'])->name('evaluation-documents.index');
@@ -149,6 +171,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/simulation/export/pdf', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'exportSimulationPDF'])->name('simulation.export.pdf');
         Route::get('/simulation/export/excel', [\App\Http\Controllers\Dashboard\AssessorInternalController::class, 'exportSimulationExcel'])->name('simulation.export.excel');
     });
+
+    // Assessor Eksternal menggunakan dashboard assessor yang sama
 
     // ========================================================================
     // ROUTE PIMPINAN
@@ -221,7 +245,7 @@ Route::middleware('auth')->group(function () {
             // API Framework LAM
             Route::get('/lam', function (Request $request) {
                 $prodi = $request->user()->prodi;
-                if (! $prodi) {
+                if (!$prodi) {
                     abort(404, 'Prodi not found');
                 }
 
@@ -232,7 +256,7 @@ Route::middleware('auth')->group(function () {
             // API Siklus Akreditasi
             Route::get('/cycles/active', function (Request $request) {
                 $prodi = $request->user()->prodi;
-                if (! $prodi) {
+                if (!$prodi) {
                     abort(404, 'Prodi not found');
                 }
 
@@ -249,7 +273,7 @@ Route::middleware('auth')->group(function () {
             Route::post('/cycles/{id}/simulation', [SimulationController::class, 'runSimulation'])->name('simulation.run');
             Route::post('/cycles/{id}/simulation/current', [SimulationController::class, 'runSimulationWithCurrentScores'])->name('simulation.run-current');
             Route::get('/cycles/{id}/simulation/history', [SimulationController::class, 'getSimulationHistory'])->name('simulation.history');
-            Route::get('/simulation/{id}', [SimulationController::class, 'getSimulation'])->name('simulation.show');
+            Route::get('/simulations/{id}', [SimulationController::class, 'getSimulation'])->name('simulations.show');
         });
     });
 

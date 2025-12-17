@@ -77,6 +77,58 @@ export default function Sidebar() {
                         Penugasan Asesor
                     </Link>
                     <Link
+                        href={route('admin-lpmpp.accreditation-assessor-assignments.index')}
+                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
+                            isActive('/admin-lpmpp/accreditation-assessor-assignments')
+                                ? 'text-white bg-blue-600 font-medium'
+                                : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v8m-4-4h8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        Penugasan Asesor Akreditasi
+                    </Link>
+                    <Link
+                        href={route('admin-lpmpp.external-assessors.index')}
+                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
+                            isActive('/admin-lpmpp/external-assessors')
+                                ? 'text-white bg-blue-600 font-medium'
+                                : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                        Kelola Asesor Eksternal
+                    </Link>
+                    <Link
+                        href={route('admin-lpmpp.lam.index')}
+                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
+                            isActive('/admin-lpmpp/lam')
+                                ? 'text-white bg-blue-600 font-medium'
+                                : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                        </svg>
+                        Kelola LAM
+                    </Link>
+                    <Link
+                        href={route('admin-lpmpp.simulations.index')}
+                        className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
+                            isActive('/admin-lpmpp/simulations')
+                                ? 'text-white bg-blue-600 font-medium'
+                                : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                    >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3v2a4 4 0 004 4h2m-6 10v-2a4 4 0 00-4-4H5m14 0h-2a4 4 0 00-4 4v2M7 7h.01M7 17h.01M17 7h.01" />
+                        </svg>
+                        Hasil Simulasi
+                    </Link>
+                    <Link
                         href={route('admin-lpmpp.statistics.index')}
                         className={`flex items-center gap-3 px-4 py-2 text-sm rounded-lg ${
                             isActive('/admin-lpmpp/statistics')
@@ -165,4 +217,3 @@ export default function Sidebar() {
         </aside>
     );
 }
-

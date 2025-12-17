@@ -2,6 +2,19 @@ import { Head, Link, router, useForm } from '@inertiajs/react';
 import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import { route } from '@/lib/route';
 import { useState, useEffect } from 'react';
+import {
+    ResponsiveContainer,
+    PieChart,
+    Pie,
+    Cell,
+    RadarChart,
+    Radar,
+    PolarGrid,
+    PolarAngleAxis,
+    PolarRadiusAxis,
+    Tooltip,
+    Legend,
+} from 'recharts';
 
 // Types
 interface LAM {
@@ -81,7 +94,7 @@ interface Score {
 }
 
 interface Simulation {
-    id: number;
+    id: string;
     total_score: number;
     predicted_result: string;
     created_at: string;
@@ -126,6 +139,33 @@ export default function AccreditationSimulation({
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [showRunModal, setShowRunModal] = useState(false);
     const [expandedStandards, setExpandedStandards] = useState<Record<number, boolean>>({});
+    const [indicatorEdits, setIndicatorEdits] = useState<Record<string, number>>({});
+    const [indicatorNotes, setIndicatorNotes] = useState<Record<string, string>>({});
+    const chartColors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#84cc16', '#e11d48', '#0ea5e9'];
+    const [showDetailModal, setShowDetailModal] = useState(false);
+    const [detailLoading, setDetailLoading] = useState(false);
+    const [detailError, setDetailError] = useState<string | null>(null);
+    const [detail, setDetail] = useState<{
+        id?: string;
+        total_score?: number;
+        predicted_result?: string;
+        standard_scores?: Array<{
+            standard_id: number;
+            code: string;
+            name: string;
+            score: number;
+            weight: number;
+            weighted_score: number;
+        }>;
+        gap_analysis?: Array<{
+            standard_code: string;
+            standard_name: string;
+            current_score: number;
+            max_score: number;
+            gap: number;
+            priority: 'high' | 'medium' | 'low';
+        }>;
+    } | null>(null);
 
     const { data, setData, post, processing, errors } = useForm({
         lam_id: prodi.lam_id?.toString() || '',
@@ -191,6 +231,90 @@ export default function AccreditationSimulation({
             return;
         }
         router.post(`/coordinator-prodi/accreditation/cycles/${cycle.id}/simulation/current`, {}, {
+            onSuccess: () => {
+                router.reload();
+            },
+        });
+    };
+
+    const standardsForChart = (cycleData?.lam?.standards ?? []).map((standard) => {
+        const indicators = (standard.elements ?? []).flatMap((el) => el.indicators ?? []);
+        let totalScore = 0;
+        let totalWeight = 0;
+        indicators.forEach((ind) => {
+            const scoreVal = currentScores[ind.id.toString()] ?? 0;
+            totalScore += scoreVal * (ind.weight ?? 0);
+            totalWeight += ind.weight ?? 0;
+        });
+        const avg = totalWeight > 0 ? totalScore / totalWeight : 0;
+        return {
+            id: standard.id,
+            code: standard.code,
+            name: standard.name,
+            score: Number(avg.toFixed(2)),
+            weight: standard.weight ?? 0,
+            weighted_score: Number((avg * (standard.weight ?? 0)).toFixed(2)),
+        };
+    });
+
+    const pieData = standardsForChart.map((s) => ({
+        name: `${s.code}`,
+        value: s.weighted_score,
+    }));
+
+    const radarData = standardsForChart.map((s) => ({
+        label: `${s.code}`,
+        score: s.score,
+    }));
+
+    const openSimulationDetail = async (simulationId: string) => {
+        setShowDetailModal(true);
+        setDetailLoading(true);
+        setDetailError(null);
+        try {
+            const res = await fetch(route('coordinator-prodi.accreditation.simulations.show', simulationId), {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                },
+            });
+            if (!res.ok) {
+                throw new Error(`Gagal memuat detail simulasi (${res.status})`);
+            }
+            const simulation = await res.json();
+            setDetail(simulation);
+        } catch (e: any) {
+            setDetailError(e?.message || 'Terjadi kesalahan saat memuat detail simulasi');
+        } finally {
+            setDetailLoading(false);
+        }
+    };
+
+    const handleIndicatorScoreChange = (indicatorId: number, value: number) => {
+        setIndicatorEdits((prev) => ({
+            ...prev,
+            [indicatorId.toString()]: value,
+        }));
+    };
+
+    const handleIndicatorNoteChange = (indicatorId: number, value: string) => {
+        setIndicatorNotes((prev) => ({
+            ...prev,
+            [indicatorId.toString()]: value,
+        }));
+    };
+
+    const handleSaveIndicatorScore = (indicatorId: number) => {
+        if (!cycleData?.id) {
+            return;
+        }
+        const payload = {
+            lam_indicator_id: indicatorId,
+            score: indicatorEdits[indicatorId.toString()] ?? 0,
+            notes: indicatorNotes[indicatorId.toString()] ?? '',
+            source: 'coordinator',
+        };
+        router.post(`/coordinator-prodi/accreditation/cycles/${cycleData.id}/scores`, payload, {
             onSuccess: () => {
                 router.reload();
             },
@@ -426,12 +550,20 @@ export default function AccreditationSimulation({
                                                 <h3 className="font-semibold text-blue-900">{cycleData.cycle_name}</h3>
                                                 <p className="text-sm text-blue-700 mt-1">{cycleData.lam.name}</p>
                                             </div>
-                                            <button
-                                                onClick={() => setActiveTab('simulation')}
-                                                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition text-sm"
-                                            >
-                                                Lihat Simulasi
-                                            </button>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => setActiveTab('simulation')}
+                                                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition text-sm"
+                                                >
+                                                    Lihat Simulasi
+                                                </button>
+                                                <Link
+                                                    href={route('coordinator-prodi.assessor-requests.create')}
+                                                    className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition text-sm"
+                                                >
+                                                    Ajukan Asesor
+                                                </Link>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -517,6 +649,41 @@ export default function AccreditationSimulation({
                                                                                                 </div>
                                                                                             </div>
                                                                                         )}
+                                                                                        <div className="mt-4 flex items-center gap-3">
+                                                                                            <input
+                                                                                                type="number"
+                                                                                                min="0"
+                                                                                                max="4"
+                                                                                                step="0.1"
+                                                                                                value={
+                                                                                                    indicatorEdits[indicator.id.toString()] ??
+                                                                                                    score?.score ??
+                                                                                                    0
+                                                                                                }
+                                                                                                onChange={(e) =>
+                                                                                                    handleIndicatorScoreChange(
+                                                                                                        indicator.id,
+                                                                                                        parseFloat(e.target.value) || 0
+                                                                                                    )
+                                                                                                }
+                                                                                                className="w-24 border border-gray-300 rounded-lg px-3 py-2"
+                                                                                            />
+                                                                                            <input
+                                                                                                type="text"
+                                                                                                placeholder="Catatan (opsional)"
+                                                                                                value={indicatorNotes[indicator.id.toString()] ?? ''}
+                                                                                                onChange={(e) =>
+                                                                                                    handleIndicatorNoteChange(indicator.id, e.target.value)
+                                                                                                }
+                                                                                                className="flex-1 border border-gray-300 rounded-lg px-3 py-2"
+                                                                                            />
+                                                                                            <button
+                                                                                                onClick={() => handleSaveIndicatorScore(indicator.id)}
+                                                                                                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
+                                                                                            >
+                                                                                                Simpan
+                                                                                            </button>
+                                                                                        </div>
                                                                                     </div>
                                                                                 );
                                                                             })
@@ -589,6 +756,55 @@ export default function AccreditationSimulation({
                                         </button>
                                     </div>
 
+                                    {(pieData.length > 0 || radarData.length > 0) && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div className="bg-white rounded-lg shadow p-6">
+                                                <h3 className="text-lg font-semibold mb-4">Distribusi Skor per Standar</h3>
+                                                <div className="h-64">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <PieChart>
+                                                            <Pie
+                                                                data={pieData}
+                                                                dataKey="value"
+                                                                nameKey="name"
+                                                                cx="50%"
+                                                                cy="50%"
+                                                                innerRadius={50}
+                                                                outerRadius={80}
+                                                                paddingAngle={2}
+                                                            >
+                                                                {pieData.map((entry, index) => (
+                                                                    <Cell key={`cell-${index}`} fill={chartColors[index % chartColors.length]} />
+                                                                ))}
+                                                            </Pie>
+                                                            <Tooltip />
+                                                            <Legend />
+                                                        </PieChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            </div>
+                                            <div className="bg-white rounded-lg shadow p-6">
+                                                <h3 className="text-lg font-semibold mb-4">Radar Skor Standar</h3>
+                                                <div className="h-64">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <RadarChart data={radarData}>
+                                                            <PolarGrid />
+                                                            <PolarAngleAxis dataKey="label" />
+                                                            <PolarRadiusAxis angle={30} domain={[0, 4]} />
+                                                            <Radar
+                                                                dataKey="score"
+                                                                stroke="#3b82f6"
+                                                                fill="#93c5fd"
+                                                                fillOpacity={0.5}
+                                                            />
+                                                            <Tooltip />
+                                                        </RadarChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {/* Latest Simulation Result */}
                                     {simulations.length > 0 && (
                                         <div className="bg-white rounded-lg shadow p-6">
@@ -658,6 +874,14 @@ export default function AccreditationSimulation({
                                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                                                     {sim.creator?.name || 'N/A'}
                                                                 </td>
+                                                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                                                                    <button
+                                                                        onClick={() => openSimulationDetail(sim.id)}
+                                                                        className="text-blue-600 hover:text-blue-900"
+                                                                    >
+                                                                        Detail
+                                                                    </button>
+                                                                </td>
                                                             </tr>
                                                         ))
                                                     )}
@@ -670,6 +894,138 @@ export default function AccreditationSimulation({
                         </div>
                     )}
                 </div>
+
+                {showDetailModal && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                        <div className="bg-white rounded-lg p-6 max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                            <div className="flex items-start justify-between">
+                                <div>
+                                    <h3 className="text-lg font-semibold">Detail Simulasi</h3>
+                                    {detail && (
+                                        <div className="mt-1 text-sm text-gray-600">
+                                            <span className="mr-4">Total Skor: <span className="font-medium text-gray-900">{detail.total_score?.toFixed(2)}</span></span>
+                                            <span>Prediksi: <span className="font-medium text-gray-900">{detail.predicted_result}</span></span>
+                                        </div>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setShowDetailModal(false);
+                                        setDetail(null);
+                                        setDetailError(null);
+                                    }}
+                                    className="text-gray-500 hover:text-gray-700"
+                                >
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+
+                            {detailLoading && (
+                                <div className="mt-6 text-center text-gray-600">Memuat detail...</div>
+                            )}
+                            {detailError && (
+                                <div className="mt-6 bg-red-50 border border-red-200 text-red-700 rounded-lg p-3">{detailError}</div>
+                            )}
+                            {!detailLoading && !detailError && detail && (
+                                <div className="mt-6 space-y-6">
+                                    <div className="bg-white rounded-lg">
+                                        <h4 className="text-md font-semibold text-gray-900 mb-3">Skor per Standar</h4>
+                                        <div className="overflow-x-auto">
+                                            <table className="min-w-full divide-y divide-gray-200">
+                                                <thead className="bg-gray-50">
+                                                    <tr>
+                                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Kode</th>
+                                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Standar</th>
+                                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Skor</th>
+                                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Bobot</th>
+                                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Skor Tertimbang</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="bg-white divide-y divide-gray-200">
+                                                    {(detail.standard_scores ?? []).map((s, idx) => (
+                                                        <tr key={`${s.standard_id}-${idx}`} className="hover:bg-gray-50">
+                                                            <td className="px-4 py-2 text-sm text-gray-900">{s.code}</td>
+                                                            <td className="px-4 py-2 text-sm text-gray-700">{s.name}</td>
+                                                            <td className="px-4 py-2 text-sm font-medium text-gray-900">{s.score.toFixed(2)}</td>
+                                                            <td className="px-4 py-2 text-sm text-gray-700">{s.weight}</td>
+                                                            <td className="px-4 py-2 text-sm font-medium text-gray-900">{s.weighted_score.toFixed(2)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="bg-white rounded-lg shadow p-6">
+                                            <h4 className="text-md font-semibold text-gray-900 mb-3">Radar Skor Standar</h4>
+                                            <div className="h-60">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <RadarChart
+                                                        data={(detail.standard_scores ?? []).map((s) => ({
+                                                            label: s.code,
+                                                            score: s.score,
+                                                        }))}
+                                                    >
+                                                        <PolarGrid />
+                                                        <PolarAngleAxis dataKey="label" />
+                                                        <PolarRadiusAxis angle={30} domain={[0, 4]} />
+                                                        <Radar dataKey="score" stroke="#10b981" fill="#6ee7b7" fillOpacity={0.5} />
+                                                        <Tooltip />
+                                                    </RadarChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-white rounded-lg shadow p-6">
+                                            <h4 className="text-md font-semibold text-gray-900 mb-3">Gap Analysis</h4>
+                                            {(detail.gap_analysis ?? []).length === 0 ? (
+                                                <div className="text-sm text-gray-500">Tidak ada gap signifikan.</div>
+                                            ) : (
+                                                <div className="overflow-x-auto">
+                                                    <table className="min-w-full divide-y divide-gray-200">
+                                                        <thead className="bg-gray-50">
+                                                            <tr>
+                                                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Standar</th>
+                                                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Skor Saat Ini</th>
+                                                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Skor Maks</th>
+                                                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Gap</th>
+                                                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Prioritas</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="bg-white divide-y divide-gray-200">
+                                                            {(detail.gap_analysis ?? []).map((g, idx) => (
+                                                                <tr key={`${g.standard_code}-${idx}`} className="hover:bg-gray-50">
+                                                                    <td className="px-4 py-2 text-sm text-gray-900">{g.standard_code} - {g.standard_name}</td>
+                                                                    <td className="px-4 py-2 text-sm text-gray-700">{g.current_score.toFixed(2)}</td>
+                                                                    <td className="px-4 py-2 text-sm text-gray-700">{g.max_score}</td>
+                                                                    <td className="px-4 py-2 text-sm font-medium text-gray-900">{g.gap.toFixed(2)}</td>
+                                                                    <td className="px-4 py-2 text-sm">
+                                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                                                            g.priority === 'high'
+                                                                                ? 'bg-red-100 text-red-800'
+                                                                                : g.priority === 'medium'
+                                                                                    ? 'bg-yellow-100 text-yellow-800'
+                                                                                    : 'bg-blue-100 text-blue-800'
+                                                                        }`}>
+                                                                            {g.priority}
+                                                                        </span>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {/* Create Cycle Modal */}
                 {showCreateModal && (
@@ -764,25 +1120,38 @@ export default function AccreditationSimulation({
                                 Masukkan skor untuk setiap indikator. Skor akan digunakan untuk menghitung prediksi hasil akreditasi.
                             </p>
                             <div className="space-y-4">
-                                {Object.entries(currentScores).map(([indicatorId, score]) => (
-                                    <div key={indicatorId} className="flex items-center gap-3">
-                                        <label className="flex-1 text-sm text-gray-700">Indikator {indicatorId}</label>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            max="4"
-                                            step="0.1"
-                                            value={simulationForm.data.indicator_scores[indicatorId] || score}
-                                            onChange={(e) => {
-                                                simulationForm.setData('indicator_scores', {
-                                                    ...simulationForm.data.indicator_scores,
-                                                    [indicatorId]: parseFloat(e.target.value) || 0,
-                                                });
-                                            }}
-                                            className="w-24 border border-gray-300 rounded-lg px-3 py-2"
-                                        />
-                                    </div>
-                                ))}
+                                {(cycleData?.lam?.standards ?? []).flatMap((st) =>
+                                    (st.elements ?? []).flatMap((el) =>
+                                        (el.indicators ?? []).map((ind) => ind)
+                                    )
+                                ).map((ind) => {
+                                    const indicatorId = ind.id.toString();
+                                    return (
+                                        <div key={indicatorId} className="flex items-center gap-3">
+                                            <label className="flex-1 text-sm text-gray-700">
+                                                {ind.code}: {ind.name}
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="4"
+                                                step="0.1"
+                                                value={
+                                                    simulationForm.data.indicator_scores[indicatorId] ??
+                                                    currentScores[indicatorId] ??
+                                                    0
+                                                }
+                                                onChange={(e) => {
+                                                    simulationForm.setData('indicator_scores', {
+                                                        ...simulationForm.data.indicator_scores,
+                                                        [indicatorId]: parseFloat(e.target.value) || 0,
+                                                    });
+                                                }}
+                                                className="w-24 border border-gray-300 rounded-lg px-3 py-2"
+                                            />
+                                        </div>
+                                    );
+                                })}
                             </div>
                             <div className="flex gap-3 pt-4 mt-4 border-t">
                                 <button

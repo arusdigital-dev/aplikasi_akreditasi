@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AccreditationCycle;
 use App\Models\Prodi;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 class AccreditationController extends Controller
@@ -114,7 +115,7 @@ class AccreditationController extends Controller
     /**
      * Save or update indicator score.
      */
-    public function saveIndicatorScore(Request $request, string $cycleId): JsonResponse
+    public function saveIndicatorScore(Request $request, string $cycleId): RedirectResponse
     {
         $validated = $request->validate([
             'lam_indicator_id' => 'required|exists:lam_indicators,id',
@@ -141,6 +142,7 @@ class AccreditationController extends Controller
             ]
         );
 
-        return response()->json($score);
+        return redirect()->route('coordinator-prodi.accreditation.simulation', $cycleId)
+            ->with('success', 'Skor indikator berhasil disimpan.');
     }
 }
