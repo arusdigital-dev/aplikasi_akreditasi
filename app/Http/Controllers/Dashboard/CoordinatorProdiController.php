@@ -1197,7 +1197,7 @@ class CoordinatorProdiController extends Controller
     public function standards(Request $request): Response
     {
         $user = $this->getUser();
-        $programs = $user->accessiblePrograms()->get(['id', 'name']);
+        $programs = $user->accessiblePrograms()->get();
 
         // If no program_id provided, use first accessible program or show selection
         if (!$request->filled('program_id')) {
@@ -1320,9 +1320,31 @@ class CoordinatorProdiController extends Controller
             'lam_name' => ['required', 'string', 'max:255'],
         ]);
 
-        $program->update([
-            'lam_name' => $validated['lam_name'],
-        ]);
+        $name = trim($validated['lam_name']);
+        $program->update(['lam_name' => $name]);
+
+        $prodi = $user->prodi;
+        $inputNormalized = preg_replace('/[\s\-_]+/', '', mb_strtolower($name));
+        $lam = \App\Models\LAM::where('is_active', true)->get()->first(function ($l) use ($name, $inputNormalized) {
+            $nNormalized = preg_replace('/[\s\-_]+/', '', mb_strtolower($l->name));
+            $cNormalized = preg_replace('/[\s\-_]+/', '', mb_strtolower($l->code));
+            if (strcasecmp($l->name, $name) === 0 || strcasecmp($l->code, $name) === 0) {
+                return true;
+            }
+            return $nNormalized === $inputNormalized || $cNormalized === $inputNormalized;
+        });
+        if ($prodi && $lam) {
+            $prodi->update(['lam_id' => $lam->id]);
+            ActivityLog::create([
+                'user_id' => Auth::id(),
+                'action' => 'update',
+                'entity_type' => \App\Models\Prodi::class,
+                'entity_id' => (string) $prodi->id,
+                'description' => "Mengaitkan prodi dengan LAM: {$lam->code} - {$lam->name}",
+                'ip_address' => request()->ip(),
+                'user_agent' => request()->userAgent(),
+            ]);
+        }
 
         ActivityLog::create([
             'user_id' => Auth::id(),
@@ -1334,7 +1356,8 @@ class CoordinatorProdiController extends Controller
             'user_agent' => request()->userAgent(),
         ]);
 
-        return back()->with('success', 'Nama LAM berhasil diperbarui.');
+        return redirect()->route('coordinator-prodi.standards', ['program_id' => $program->id])
+            ->with('success', 'Nama LAM berhasil diperbarui.');
     }
 
     /**
@@ -1778,16 +1801,21 @@ class CoordinatorProdiController extends Controller
         }
 
         $validated = $request->validate([
-            'lam_id' => 'required|exists:lams,id',
+            'lam_id' => 'nullable|exists:lams,id',
             'cycle_name' => 'required|string|max:100',
             'start_date' => 'required|date',
             'target_submission_date' => 'nullable|date',
             'notes' => 'nullable|string',
         ]);
 
+        $lamId = $validated['lam_id'] ?? $prodi->lam_id;
+        if (!$lamId) {
+            return redirect()->back()->with('error', 'LAM belum ditentukan untuk prodi ini');
+        }
+
         $cycle = \App\Models\AccreditationCycle::create([
             'prodi_id' => $prodi->id,
-            'lam_id' => $validated['lam_id'],
+            'lam_id' => $lamId,
             'cycle_name' => $validated['cycle_name'],
             'start_date' => $validated['start_date'],
             'target_submission_date' => $validated['target_submission_date'] ?? null,
@@ -1971,6 +1999,9 @@ class CoordinatorProdiController extends Controller
     {
         $user = $this->getUser();
         $prodi = $user->prodi;
+        if ($prodi) {
+            $prodi->load('lam:id,name,code');
+        }
 
         if (!$prodi) {
             return redirect()->route('coordinator-prodi.index')
@@ -1985,6 +2016,46 @@ class CoordinatorProdiController extends Controller
 
         $activeCycle = $cycles->firstWhere('status', 'active');
         $lams = \App\Models\LAM::where('is_active', true)->get(['id', 'name', 'code']);
+
+        $programStandards = [];
+        $program = $user->accessiblePrograms()->first();
+        if ($program) {
+            $program->load(['standards.criteria.criteriaPoints']);
+            $programStandards = $program->standards->map(function ($std) {
+                return [
+                    'id' => $std->id,
+                    'order_index' => $std->order_index,
+                    'name' => $std->name,
+                    'description' => $std->description,
+                    'weight' => $std->weight,
+                    'criteria' => $std->criteria->map(function ($crit) {
+                        return [
+                            'id' => $crit->id,
+                            'order_index' => $crit->order_index,
+                            'name' => $crit->name,
+                            'description' => $crit->description,
+                            'weight' => $crit->weight,
+                            'criteriaPoints' => $crit->criteriaPoints->map(function ($cp) {
+                                $rubrics = collect($cp->rubrics ?? [])->map(function ($r) {
+                                    return [
+                                        'score' => $r['score'] ?? null,
+                                        'description' => $r['description'] ?? null,
+                                    ];
+                                })->values()->all();
+                                return [
+                                    'id' => $cp->id,
+                                    'title' => $cp->title,
+                                    'description' => $cp->description,
+                                    'max_score' => $cp->max_score,
+                                    'order_index' => $cp->order_index,
+                                    'rubrics' => !empty($rubrics) ? $rubrics : null,
+                                ];
+                            })->values()->all(),
+                        ];
+                    })->values()->all(),
+                ];
+            })->values()->all();
+        }
 
         // Get selected cycle
         $cycle = null;
@@ -2120,6 +2191,8 @@ class CoordinatorProdiController extends Controller
             'activeCycle' => $activeCycle,
             'lams' => $lams,
             'prodi' => $prodi,
+            'programLamName' => $user->accessiblePrograms()->first()?->lam_name,
+            'programStandards' => $programStandards,
             // Criteria tab data
             'cycleData' => $cycleData,
             'scores' => $scores,

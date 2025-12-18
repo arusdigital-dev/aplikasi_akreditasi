@@ -34,13 +34,41 @@ interface Props {
         id: string;
         name: string;
         lam_id: number | null;
+        lam?: {
+            id: number;
+            name: string;
+            code: string;
+        } | null;
     };
+    programLamName?: string | null;
 }
 
-export default function AccreditationCycles({ cycles, activeCycle, lams, prodi }: Props) {
+export default function AccreditationCycles({ cycles, activeCycle, lams, prodi, programLamName }: Props) {
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const normalize = (s?: string | null) => (s || '').toLowerCase().replace(/[\s\-_]+/g, '');
+    const programMatchedLam = programLamName
+        ? lams.find((lam) => normalize(lam.name) === normalize(programLamName) || normalize(lam.code) === normalize(programLamName))
+        : undefined;
+    const displayLamName = (lam: { name: string; code: string }) =>
+        programLamName &&
+        (normalize(lam.name) === normalize(programLamName) || normalize(lam.code) === normalize(programLamName))
+            ? programLamName
+            : lam.name;
+    const defaultLamId =
+        prodi.lam_id?.toString() ||
+        (prodi.lam?.id ? String(prodi.lam.id) : '') ||
+        (programMatchedLam ? String(programMatchedLam.id) : '');
+    const lamOptions = defaultLamId
+        ? [...lams].sort((a, b) => {
+              const aIsDefault = String(a.id) === defaultLamId;
+              const bIsDefault = String(b.id) === defaultLamId;
+              if (aIsDefault && !bIsDefault) return -1;
+              if (!aIsDefault && bIsDefault) return 1;
+              return a.name.localeCompare(b.name);
+          })
+        : lams;
     const { data, setData, post, processing, errors } = useForm({
-        lam_id: prodi.lam_id?.toString() || '',
+        lam_id: defaultLamId || '',
         cycle_name: '',
         start_date: '',
         target_submission_date: '',
@@ -49,11 +77,15 @@ export default function AccreditationCycles({ cycles, activeCycle, lams, prodi }
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        router.post('/coordinator-prodi/accreditation/cycles', data, {
+        const payload = {
+            ...data,
+            lam_id: data.lam_id || defaultLamId,
+        };
+        router.post('/coordinator-prodi/accreditation/cycles', payload, {
             onSuccess: () => {
                 setShowCreateModal(false);
                 setData({
-                    lam_id: prodi.lam_id?.toString() || '',
+                    lam_id: defaultLamId || '',
                     cycle_name: '',
                     start_date: '',
                     target_submission_date: '',
@@ -97,7 +129,7 @@ export default function AccreditationCycles({ cycles, activeCycle, lams, prodi }
                                     <h3 className="text-lg font-semibold mb-1">Siklus Aktif</h3>
                                     <p className="text-blue-100">{activeCycle.cycle_name}</p>
                                     <p className="text-sm text-blue-100 mt-1">
-                                        {activeCycle.lam.name} • Dimulai: {new Date(activeCycle.start_date).toLocaleDateString('id-ID')}
+                                        {displayLamName(activeCycle.lam)} • Dimulai: {new Date(activeCycle.start_date).toLocaleDateString('id-ID')}
                                     </p>
                                 </div>
                                 <Link
@@ -163,7 +195,7 @@ export default function AccreditationCycles({ cycles, activeCycle, lams, prodi }
                                                 <div className="text-sm font-medium text-gray-900">{cycle.cycle_name}</div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="text-sm text-gray-900">{cycle.lam.name}</div>
+                                                <div className="text-sm text-gray-900">{displayLamName(cycle.lam)}</div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="text-sm text-gray-900">
@@ -211,17 +243,14 @@ export default function AccreditationCycles({ cycles, activeCycle, lams, prodi }
                                         LAM Framework
                                     </label>
                                     <select
-                                        value={data.lam_id}
+                                        value={data.lam_id || defaultLamId}
                                         onChange={(e) => setData('lam_id', e.target.value)}
                                         className="w-full border border-gray-300 rounded-lg px-3 py-2"
                                         required
                                     >
-                                        <option value="">Pilih LAM</option>
-                                        {lams.map((lam) => (
-                                            <option key={lam.id} value={lam.id}>
-                                                {lam.name}
-                                            </option>
-                                        ))}
+                                        <option value={defaultLamId || ''} disabled={!defaultLamId}>
+                                            {programLamName || (prodi.lam ? prodi.lam.name : 'LAM belum diatur')}
+                                        </option>
                                     </select>
                                     {errors.lam_id && <p className="text-red-500 text-xs mt-1">{errors.lam_id}</p>}
                                 </div>
@@ -287,4 +316,3 @@ export default function AccreditationCycles({ cycles, activeCycle, lams, prodi }
         </>
     );
 }
-

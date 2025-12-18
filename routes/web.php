@@ -280,6 +280,7 @@ Route::middleware('auth')->group(function () {
             Route::post('/cycles/{id}/simulation/current', [SimulationController::class, 'runSimulationWithCurrentScores'])->name('simulation.run-current');
             Route::get('/cycles/{id}/simulation/history', [SimulationController::class, 'getSimulationHistory'])->name('simulation.history');
             Route::get('/simulations/{id}', [SimulationController::class, 'getSimulation'])->name('simulations.show');
+            Route::get('/cycles/{id}/criteria-points/scores', [AccreditationController::class, 'getCriteriaPointScores'])->name('criteria-points.scores');
         });
     });
 

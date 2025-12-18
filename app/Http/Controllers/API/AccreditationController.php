@@ -4,10 +4,12 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\AccreditationCycle;
+use App\Models\Evaluation;
 use App\Models\Prodi;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 class AccreditationController extends Controller
 {
@@ -36,7 +38,7 @@ class AccreditationController extends Controller
             ->with(['lam.standards.elements.indicators.rubrics'])
             ->first();
 
-        if (! $cycle) {
+        if (!$cycle) {
             return response()->json([
                 'message' => 'No active accreditation cycle found',
             ], 404);
@@ -51,7 +53,7 @@ class AccreditationController extends Controller
     public function createCycle(Request $request, string $prodiId): JsonResponse
     {
         $validated = $request->validate([
-            'lam_id' => 'required|exists:lams,id',
+            'lam_id' => 'nullable|exists:lams,id',
             'cycle_name' => 'required|string|max:100',
             'start_date' => 'required|date',
             'target_submission_date' => 'nullable|date',
@@ -59,10 +61,16 @@ class AccreditationController extends Controller
         ]);
 
         $prodi = Prodi::findOrFail($prodiId);
+        $lamId = $validated['lam_id'] ?? $prodi->lam_id;
+        if (!$lamId) {
+            return response()->json([
+                'message' => 'LAM belum ditentukan untuk prodi ini',
+            ], 422);
+        }
 
         $cycle = AccreditationCycle::create([
             'prodi_id' => $prodiId,
-            'lam_id' => $validated['lam_id'],
+            'lam_id' => $lamId,
             'cycle_name' => $validated['cycle_name'],
             'start_date' => $validated['start_date'],
             'target_submission_date' => $validated['target_submission_date'] ?? null,
@@ -144,5 +152,65 @@ class AccreditationController extends Controller
 
         return redirect()->route('coordinator-prodi.accreditation.simulation', $cycleId)
             ->with('success', 'Skor indikator berhasil disimpan.');
+    }
+
+    /**
+     * Get average scores per program criteria point for a given cycle.
+     */
+    public function getCriteriaPointScores(Request $request, string $cycleId): JsonResponse
+    {
+        $cycle = AccreditationCycle::with('lam')->findOrFail($cycleId);
+        $user = $request->user();
+
+        $program = $user->accessiblePrograms()->first();
+        if (!$program) {
+            return response()->json([
+                'message' => 'Program tidak ditemukan',
+                'scores' => [],
+            ], 404);
+        }
+
+        $program->load(['standards.criteria.criteriaPoints']);
+        $pointIds = $program->standards->flatMap(function ($std) {
+            return $std->criteria->flatMap(function ($cr) {
+                return $cr->criteriaPoints->pluck('id');
+            });
+        })->unique()->values();
+
+        if ($pointIds->isEmpty()) {
+            return response()->json(['scores' => []]);
+        }
+
+        $year = null;
+        if ($cycle->start_date) {
+            try {
+                $year = Carbon::parse($cycle->start_date)->year;
+            } catch (\Throwable $e) {
+                $year = null;
+            }
+        }
+
+        $query = Evaluation::query()
+            ->whereIn('criteria_point_id', $pointIds)
+            ->whereHas('assignment', function ($q) use ($user) {
+                $q->where('prodi_id', $user->prodi_id);
+            });
+
+        if ($year) {
+            $query->whereYear('created_at', $year);
+        }
+
+        $evaluations = $query->get();
+        $grouped = $evaluations->groupBy('criteria_point_id')->map(function ($group, $cpId) {
+            return [
+                'criteria_point_id' => (int) $cpId,
+                'average_score' => round($group->avg('score') ?? 0, 2),
+                'count' => $group->count(),
+            ];
+        });
+
+        return response()->json([
+            'scores' => $grouped->values(),
+        ]);
     }
 }

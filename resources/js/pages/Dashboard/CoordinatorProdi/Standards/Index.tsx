@@ -110,17 +110,6 @@ export default function StandardsIndex({ program, programs = [] }: Props) {
 
     const currentProgram = program || (programs.length > 0 ? programs[0] : null);
 
-    useEffect(() => {
-        if (!currentProgram) {
-            setLamName('');
-            return;
-        }
-        const name = (currentProgram as any).lam_name || '';
-        setLamName(typeof name === 'string' ? name : '');
-    }, [currentProgram?.id]);
-
-    const persistLamName = undefined as unknown as (name: string) => void;
-
     // Removed frontend-only add/remove criteria point logic
 
     const renderPointRows = (criterion: Criteria, std?: Standard) => {
@@ -192,8 +181,51 @@ export default function StandardsIndex({ program, programs = [] }: Props) {
                             <div className="mt-2 flex items-center gap-4 text-sm text-gray-600">
                                 {currentProgram.jenjang && <span>Jenjang: {currentProgram.jenjang}</span>}
                                 {currentProgram.fakultas && <span>Fakultas: {currentProgram.fakultas}</span>}
-                                {lamName && <span>LAM: {lamName}</span>}
+                                {(currentProgram as any)?.lam_name && <span>LAM: {(currentProgram as any).lam_name}</span>}
                             </div>
+                        </div>
+                    )}
+                    {currentProgram && (
+                        <div className="mt-4 border-t pt-4">
+                            <h4 className="text-sm font-medium text-gray-900 mb-2">Atur LAM untuk Program</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                <input
+                                    type="text"
+                                    placeholder="Nama LAM (mis. LAM INFOKOM)"
+                                    value={lamName}
+                                    onChange={(e) => setLamName(e.target.value)}
+                                    className="border border-gray-300 rounded-md px-3 py-2 text-sm"
+                                />
+                                <button
+                                    className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm"
+                                    onClick={() => {
+                                        const name = lamName.trim();
+                                        if (!name) {
+                                            toast.error('Nama LAM tidak boleh kosong');
+                                            return;
+                                        }
+                                        router.put(
+                                            route('coordinator-prodi.programs.lam-name.update', currentProgram.id),
+                                            { lam_name: name },
+                                            {
+                                                onSuccess: () => {
+                                                    toast.success('Nama LAM disimpan');
+                                                    setLamName('');
+                                                    router.get(route('coordinator-prodi.standards'), { program_id: currentProgram.id });
+                                                },
+                                                onError: () => {
+                                                    toast.error('Gagal menyimpan nama LAM');
+                                                },
+                                            }
+                                        );
+                                    }}
+                                >
+                                    Simpan LAM
+                                </button>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-2">
+                                LAM yang disimpan di sini akan dipakai sebagai default saat membuat siklus akreditasi.
+                            </p>
                         </div>
                     )}
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
@@ -208,13 +240,6 @@ export default function StandardsIndex({ program, programs = [] }: Props) {
                                     placeholder="Nama kriteria"
                                     value={newCriterion.name}
                                     onChange={(e) => setNewCriterion({ ...newCriterion, name: e.target.value })}
-                                    className="border border-gray-300 rounded-md px-3 py-2 text-sm"
-                                />
-                                <input
-                                    type="text"
-                                    placeholder="Nama LAM"
-                                    value={lamName}
-                                    onChange={(e) => setLamName(e.target.value)}
                                     className="border border-gray-300 rounded-md px-3 py-2 text-sm"
                                 />
                                 <input
@@ -242,15 +267,11 @@ export default function StandardsIndex({ program, programs = [] }: Props) {
                                                 description: newCriterion.description,
                                                 weight: 0,
                                                 order_index: newCriterion.order_index,
-                                                lam_name: lamName.trim() || undefined,
                                             },
                                             {
                                                 onSuccess: () => {
                                                     toast.success('Kriteria berhasil dibuat');
                                                     setNewCriterion({ name: '', description: '', order_index: 1 });
-                                                    if (lamName.trim()) {
-                                                        setLamName(lamName.trim());
-                                                    }
                                                 },
                                                 onError: () => {
                                                     toast.error('Gagal membuat kriteria');

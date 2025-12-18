@@ -139,6 +139,7 @@ export function route(name: string, params?: Record<string, any> | string | numb
         'coordinator-prodi.accreditation.cycles.update': { url: (id: string | number) => `/coordinator-prodi/accreditation/cycles/${id}`, method: 'put' },
         'coordinator-prodi.accreditation.cycles.scores': { url: (id: string | number) => `/coordinator-prodi/accreditation/cycles/${id}/scores` },
         'coordinator-prodi.accreditation.cycles.scores.save': { url: (id: string | number) => `/coordinator-prodi/accreditation/cycles/${id}/scores`, method: 'post' },
+        'coordinator-prodi.accreditation.criteria-points.scores': { url: (id: string | number) => `/coordinator-prodi/accreditation/cycles/${id}/criteria-points/scores` },
         'coordinator-prodi.accreditation.simulation.run': { url: (id: string | number) => `/coordinator-prodi/accreditation/cycles/${id}/simulation`, method: 'post' },
         'coordinator-prodi.accreditation.simulation.run-current': { url: (id: string | number) => `/coordinator-prodi/accreditation/cycles/${id}/simulation/current`, method: 'post' },
         'coordinator-prodi.accreditation.simulation.history': { url: (id: string | number) => `/coordinator-prodi/accreditation/cycles/${id}/simulation/history` },

@@ -85,6 +85,54 @@ interface CycleData {
     };
 }
 
+type ProgramRubric = { score: number; description: string | null };
+type ProgramCriteriaPoint = {
+    id: number;
+    title: string;
+    description: string | null;
+    max_score: number;
+    order_index?: number;
+    rubrics?: ProgramRubric[] | null;
+};
+type ProgramCriterion = {
+    id: number;
+    name: string;
+    description: string | null;
+    weight: number;
+    order_index: number;
+    criteriaPoints?: ProgramCriteriaPoint[];
+};
+type ProgramStandard = {
+    id: number;
+    name: string;
+    description: string | null;
+    weight: number;
+    order_index: number;
+    criteria: ProgramCriterion[];
+};
+type ProgramSimulation = {
+    total_score: number;
+    predicted_result: string;
+    standard_scores: Array<{
+        standard_id: number;
+        code: string;
+        name: string | null;
+        score: number;
+        weight: number;
+        weighted_score: number;
+    }>;
+    criteria_breakdown?: Record<
+        number,
+        Array<{
+            id: number;
+            code: string;
+            name: string | null;
+            weight: number;
+            score: number;
+        }>
+    >;
+};
+
 interface Score {
     id: string;
     lam_indicator_id: number;
@@ -112,7 +160,13 @@ interface Props {
         id: string;
         name: string;
         lam_id: number | null;
+        lam?: {
+            id: number;
+            name: string;
+            code: string;
+        } | null;
     };
+    programLamName?: string | null;
     // Criteria tab data
     cycleData: CycleData | null;
     scores: Record<string, Score>;
@@ -120,6 +174,8 @@ interface Props {
     cycle: AccreditationCycle | null;
     simulations: Simulation[];
     currentScores: Record<string, number>;
+    programStandards?: ProgramStandard[];
+    programSimulation?: ProgramSimulation | null;
 }
 
 type Tab = 'cycles' | 'criteria' | 'simulation';
@@ -129,11 +185,14 @@ export default function AccreditationSimulation({
     activeCycle,
     lams,
     prodi,
+    programLamName,
     cycleData,
     scores,
     cycle,
     simulations,
     currentScores,
+    programStandards = [],
+    programSimulation = null,
 }: Props) {
     const [activeTab, setActiveTab] = useState<Tab>('cycles');
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -165,10 +224,34 @@ export default function AccreditationSimulation({
             gap: number;
             priority: 'high' | 'medium' | 'low';
         }>;
+        criteria_point_scores?: Record<number, number>;
+        criteria_breakdown?: Record<
+            number,
+            Array<{
+                id: number;
+                code: string;
+                name: string | null;
+                weight: number;
+                score: number;
+            }>
+        >;
     } | null>(null);
-
-    const { data, setData, post, processing, errors } = useForm({
-        lam_id: prodi.lam_id?.toString() || '',
+    const [runningCurrent, setRunningCurrent] = useState(false);
+    const normalize = (s?: string | null) => (s || '').toLowerCase().replace(/[\s\-_]+/g, '');
+    const programMatchedLam = programLamName
+        ? lams.find((lam) => normalize(lam.name) === normalize(programLamName) || normalize(lam.code) === normalize(programLamName))
+        : undefined;
+    const displayLamName = (lam: { name: string; code?: string }) =>
+        programLamName &&
+        (normalize(lam.name) === normalize(programLamName) || normalize(lam.code) === normalize(programLamName))
+            ? programLamName
+            : lam.name;
+    const defaultLamId =
+        prodi.lam_id?.toString() ||
+        (prodi.lam?.id ? String(prodi.lam.id) : '') ||
+        (programMatchedLam ? String(programMatchedLam.id) : '');
+    const { data, setData, processing, errors } = useForm({
+        lam_id: defaultLamId || '',
         cycle_name: '',
         start_date: '',
         target_submission_date: '',
@@ -199,11 +282,15 @@ export default function AccreditationSimulation({
 
     const handleCreateCycle = (e: React.FormEvent) => {
         e.preventDefault();
-        router.post('/coordinator-prodi/accreditation/cycles', data, {
+        const payload = {
+            ...data,
+            lam_id: data.lam_id || defaultLamId,
+        };
+        router.post('/coordinator-prodi/accreditation/cycles', payload, {
             onSuccess: () => {
                 setShowCreateModal(false);
                 setData({
-                    lam_id: prodi.lam_id?.toString() || '',
+                    lam_id: prodi.lam_id?.toString() || defaultLamId || '',
                     cycle_name: '',
                     start_date: '',
                     target_submission_date: '',
@@ -219,9 +306,19 @@ export default function AccreditationSimulation({
             return;
         }
         router.post(`/coordinator-prodi/accreditation/cycles/${cycle.id}/simulation`, simulationForm.data, {
-            onSuccess: () => {
+            onSuccess: async () => {
                 setShowRunModal(false);
-                router.reload();
+                try {
+                    const res = await fetch(route('coordinator-prodi.accreditation.simulation.history', cycle.id), {
+                        headers: { Accept: 'application/json' },
+                    });
+                    if (res.ok) {
+                        const hist = await res.json();
+                        if (Array.isArray(hist) && hist.length > 0) {
+                            await openSimulationDetail(hist[0].id);
+                        }
+                    }
+                } catch {}
             },
         });
     };
@@ -230,42 +327,153 @@ export default function AccreditationSimulation({
         if (!cycle) {
             return;
         }
-        router.post(`/coordinator-prodi/accreditation/cycles/${cycle.id}/simulation/current`, {}, {
-            onSuccess: () => {
-                router.reload();
-            },
-        });
+        setRunningCurrent(true);
+        setShowDetailModal(true);
+        setDetailLoading(true);
+        setDetailError(null);
+        const fetchLatest = async (attempt = 1) => {
+            try {
+                const res = await fetch(route('coordinator-prodi.accreditation.simulation.history', cycle.id), {
+                    headers: { Accept: 'application/json' },
+                });
+                if (res.ok) {
+                    const hist = await res.json();
+                    if (Array.isArray(hist) && hist.length > 0) {
+                        await openSimulationDetail(hist[0].id);
+                        return true;
+                    }
+                }
+            } catch {}
+            if (attempt < 3) {
+                await new Promise((r) => setTimeout(r, 500));
+                return fetchLatest(attempt + 1);
+            }
+            return false;
+        };
+        const hasCurrent = Object.keys(currentScores || {}).length > 0;
+        if (hasCurrent) {
+            router.post(route('coordinator-prodi.accreditation.simulation.run-current', cycle.id), {}, {
+                onSuccess: async () => {
+                    setActiveTab('simulation');
+                    const opened = await fetchLatest(1);
+                    if (!opened) {
+                        setDetailError('Simulasi tidak ditemukan. Pastikan skor indikator tersedia, lalu coba lagi.');
+                        setDetailLoading(false);
+                    }
+                },
+                onError: () => {
+                    setDetailError('Gagal menjalankan simulasi. Silakan coba lagi.');
+                    setDetailLoading(false);
+                },
+                onFinish: () => {
+                    setRunningCurrent(false);
+                },
+            });
+        } else {
+            const fallbackScores = buildFallbackIndicatorScores();
+            router.post(route('coordinator-prodi.accreditation.simulation.run', cycle.id), { indicator_scores: fallbackScores, notes: '' }, {
+                onSuccess: async () => {
+                    setActiveTab('simulation');
+                    try {
+                        const res = await fetch(route('coordinator-prodi.accreditation.simulation.history', cycle.id), {
+                            headers: { Accept: 'application/json' },
+                        });
+                        if (res.ok) {
+                            const hist = await res.json();
+                            if (Array.isArray(hist) && hist.length > 0) {
+                                await openSimulationDetail(hist[0].id);
+                            } else {
+                                setDetailError('Simulasi tidak ditemukan. Pastikan skor indikator tersedia, lalu coba lagi.');
+                            }
+                        } else {
+                            setDetailError('Gagal memuat riwayat simulasi');
+                        }
+                    } catch {
+                        setDetailError('Terjadi kesalahan saat memuat detail simulasi');
+                    } finally {
+                        setDetailLoading(false);
+                        setRunningCurrent(false);
+                    }
+                },
+                onError: () => {
+                    setDetailError('Gagal menjalankan simulasi');
+                    setDetailLoading(false);
+                    setRunningCurrent(false);
+                },
+            });
+        }
     };
 
-    const standardsForChart = (cycleData?.lam?.standards ?? []).map((standard) => {
-        const indicators = (standard.elements ?? []).flatMap((el) => el.indicators ?? []);
-        let totalScore = 0;
-        let totalWeight = 0;
-        indicators.forEach((ind) => {
-            const scoreVal = currentScores[ind.id.toString()] ?? 0;
-            totalScore += scoreVal * (ind.weight ?? 0);
-            totalWeight += ind.weight ?? 0;
+    const criteriaForChart =
+        programSimulation && programSimulation.criteria_breakdown
+            ? Object.values(programSimulation.criteria_breakdown)
+                  .flat()
+                  .map((c) => ({
+                      id: c.id,
+                      code: c.code,
+                      name: c.name || '',
+                      score: Number(c.score.toFixed(2)),
+                      weight: c.weight,
+                      weighted_score: Number((c.score * c.weight).toFixed(2)),
+                  }))
+            : [];
+
+    const pieData = criteriaForChart.map((c) => ({
+        name: `${c.code}`,
+        value: c.weighted_score,
+    }));
+ 
+    const radarData = (() => {
+        const cpScores = detail?.criteria_point_scores ?? {};
+        const items: Array<{ label: string; score: number }> = [];
+        [...(programStandards ?? [])].forEach((st) => {
+            [...(st.criteria ?? [])].forEach((cr) => {
+                const pts = [...(cr.criteriaPoints ?? [])];
+                const weightSum = pts.reduce((acc, pt) => acc + Number(pt.max_score ?? 0), 0);
+                const weightedSum = pts.reduce((acc, pt) => acc + Number(cpScores[pt.id] ?? 0) * Number(pt.max_score ?? 0), 0);
+                const avg = weightSum > 0 ? weightedSum / weightSum : 0;
+                items.push({
+                    label: `${cr.name}`,
+                    score: Number(avg.toFixed(2)),
+                });
+            });
         });
-        const avg = totalWeight > 0 ? totalScore / totalWeight : 0;
-        return {
-            id: standard.id,
-            code: standard.code,
-            name: standard.name,
-            score: Number(avg.toFixed(2)),
-            weight: standard.weight ?? 0,
-            weighted_score: Number((avg * (standard.weight ?? 0)).toFixed(2)),
-        };
+        return items;
+    })();
+
+    const buildFallbackIndicatorScores = (): Record<string, number> => {
+        const existing = currentScores || {};
+        if (Object.keys(existing).length > 0) {
+            return existing;
+        }
+        const scoreRecords = scores || {};
+        const scoreValues = Object.values(scoreRecords);
+        if (scoreValues.length > 0) {
+            const map: Record<string, number> = {};
+            scoreValues.forEach((s) => {
+                map[String(s.lam_indicator_id)] = Number(s.score ?? 0);
+            });
+            return map;
+        }
+        const zeros: Record<string, number> = {};
+        (cycleData?.lam?.standards ?? []).forEach((st) => {
+            (st.elements ?? []).forEach((el) => {
+                (el.indicators ?? []).forEach((ind) => {
+                    zeros[String(ind.id)] = 0;
+                });
+            });
+        });
+        return zeros;
+    };
+
+    const criteriaBreakdownMap: Record<number, Record<number, { weight: number; score: number }>> = {};
+    Object.entries(programSimulation?.criteria_breakdown ?? {}).forEach(([stdId, items]) => {
+        const sid = Number(stdId);
+        criteriaBreakdownMap[sid] = {};
+        (items as Array<{ id: number; weight: number; score: number }>).forEach((it) => {
+            criteriaBreakdownMap[sid][it.id] = { weight: it.weight, score: it.score };
+        });
     });
-
-    const pieData = standardsForChart.map((s) => ({
-        name: `${s.code}`,
-        value: s.weighted_score,
-    }));
-
-    const radarData = standardsForChart.map((s) => ({
-        label: `${s.code}`,
-        score: s.score,
-    }));
 
     const openSimulationDetail = async (simulationId: string) => {
         setShowDetailModal(true);
@@ -282,7 +490,42 @@ export default function AccreditationSimulation({
                 throw new Error(`Gagal memuat detail simulasi (${res.status})`);
             }
             const simulation = await res.json();
-            setDetail(simulation);
+            const allPoints = [...(programStandards ?? [])]
+                .flatMap((st) => [...(st.criteria ?? [])])
+                .flatMap((cr) => [...(cr.criteriaPoints ?? [])]);
+            let baseScale = 400;
+            try {
+                if (typeof window !== 'undefined') {
+                    const ls = window.localStorage.getItem('criteriaPointsBaseScale');
+                    const n = ls ? parseFloat(ls) : NaN;
+                    if (!Number.isNaN(n) && n > 0) {
+                        baseScale = n;
+                    }
+                }
+            } catch {}
+            const indicatorVals = Object.values(currentScores || {}).map((v) => Number(v)).filter((v) => Number.isFinite(v));
+            const avgIndicatorScore = indicatorVals.length > 0 ? indicatorVals.reduce((a, b) => a + b, 0) / indicatorVals.length : 0;
+            const defaultScore = 3;
+            const chosenScore = avgIndicatorScore > 0 ? avgIndicatorScore : defaultScore;
+            const sumWeights = allPoints.reduce((acc, pt) => acc + Number(pt.max_score ?? 0), 0);
+            const totalScore = chosenScore * sumWeights;
+            const finalPercentage = baseScale > 0 ? (totalScore / baseScale) * 100 : 0;
+            const grade =
+                totalScore >= 361
+                    ? 'Unggul'
+                    : totalScore >= 301
+                    ? 'Baik Sekali'
+                    : totalScore >= 200
+                    ? 'Baik'
+                    : 'Tidak Terakreditasi';
+
+            setDetail({
+                ...simulation,
+                criteria_point_scores: {},
+                cp_total_score: Number(totalScore.toFixed(2)),
+                cp_final_percentage: Number(finalPercentage.toFixed(2)),
+                cp_grade: grade,
+            });
         } catch (e: any) {
             setDetailError(e?.message || 'Terjadi kesalahan saat memuat detail simulasi');
         } finally {
@@ -423,7 +666,7 @@ export default function AccreditationSimulation({
                                             <h3 className="text-lg font-semibold mb-1">Siklus Aktif</h3>
                                             <p className="text-blue-100">{activeCycle.cycle_name}</p>
                                             <p className="text-sm text-blue-100 mt-1">
-                                                {activeCycle.lam.name} • Dimulai:{' '}
+                                                {displayLamName(activeCycle.lam)} • Dimulai:{' '}
                                                 {new Date(activeCycle.start_date).toLocaleDateString('id-ID')}
                                             </p>
                                         </div>
@@ -490,7 +733,7 @@ export default function AccreditationSimulation({
                                                         <div className="text-sm font-medium text-gray-900">{c.cycle_name}</div>
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap">
-                                                        <div className="text-sm text-gray-900">{c.lam.name}</div>
+                                                        <div className="text-sm text-gray-900">{displayLamName(c.lam)}</div>
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap">
                                                         <div className="text-sm text-gray-900">
@@ -548,7 +791,7 @@ export default function AccreditationSimulation({
                                         <div className="flex items-center justify-between">
                                             <div>
                                                 <h3 className="font-semibold text-blue-900">{cycleData.cycle_name}</h3>
-                                                <p className="text-sm text-blue-700 mt-1">{cycleData.lam.name}</p>
+                                                <p className="text-sm text-blue-700 mt-1">{displayLamName(cycleData.lam)}</p>
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <button
@@ -568,7 +811,62 @@ export default function AccreditationSimulation({
                                     </div>
 
                                     {/* Standards */}
-                                    {cycleData.lam?.standards && cycleData.lam.standards.length > 0 ? (
+                                    {programStandards && programStandards.length > 0 ? (
+                                        [...programStandards]
+                                            .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+                                            .flatMap((standard) =>
+                                                [...(standard.criteria ?? [])]
+                                                    .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+                                                    .map((criterion) => ({ criterion, standard }))
+                                            )
+                                            .map(({ criterion, standard }) => (
+                                                <div key={criterion.id} className="bg-white rounded-lg shadow">
+                                                    <div className="px-6 py-4">
+                                                        <div className="font-medium text-gray-900 mb-3">
+                                                            {`Kriteria ${standard.order_index}.${criterion.order_index}: ${criterion.name ?? ''}`}
+                                                        </div>
+                                                        <div className="space-y-3 ml-1 md:ml-4">
+                                                            {criterion.criteriaPoints && criterion.criteriaPoints.length > 0 ? (
+                                                                criterion.criteriaPoints
+                                                                    .slice()
+                                                                    .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+                                                                    .map((point) => (
+                                                                        <div key={point.id} className="bg-white rounded-lg p-4 border border-gray-200">
+                                                                            <div className="flex items-start justify-between mb-2">
+                                                                                <div className="flex-1">
+                                                                                    <div className="font-medium text-gray-900">{point.title}</div>
+                                                                                    {point.description && (
+                                                                                        <p className="text-sm text-gray-600 mt-1">{point.description}</p>
+                                                                                    )}
+                                                                                    {point.rubrics && point.rubrics.length > 0 && (
+                                                                                        <div className="mt-3 pt-3 border-t border-gray-200">
+                                                                                            <div className="text-xs font-medium text-gray-500 mb-2">Rubrik Penilaian:</div>
+                                                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                                                                {point.rubrics.map((rubric) => (
+                                                                                                    <div key={rubric.score} className="text-xs bg-gray-50 p-2 rounded">
+                                                                                                        <span className="font-medium">Skor {rubric.score}:</span> {rubric.description ?? '-'}
+                                                                                                    </div>
+                                                                                                ))}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                                <div className="ml-4">
+                                                                                    <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-lg text-sm font-medium">
+                                                                                        Maks Skor: {point.max_score}
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))
+                                                            ) : (
+                                                                <div className="text-sm text-gray-500 italic">Tidak ada poin kriteria</div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))
+                                    ) : cycleData.lam?.standards && cycleData.lam.standards.length > 0 ? (
                                         cycleData.lam.standards.map((standard) => (
                                             <div key={standard.id} className="bg-white rounded-lg shadow">
                                                 <button
@@ -591,7 +889,6 @@ export default function AccreditationSimulation({
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                                     </svg>
                                                 </button>
-
                                                 {expandedStandards[standard.id] && (
                                                     <div className="border-t border-gray-200">
                                                         {standard.elements && standard.elements.length > 0 ? (
@@ -625,7 +922,7 @@ export default function AccreditationSimulation({
                                                                                                                 ))}
                                                                                                             </ul>
                                                                                                         </div>
-                                                                    )}
+                                                                                                    )}
                                                                                             </div>
                                                                                             {score && (
                                                                                                 <div className="ml-4">
@@ -702,7 +999,7 @@ export default function AccreditationSimulation({
                                         ))
                                     ) : (
                                         <div className="bg-white rounded-lg shadow p-6 text-center text-gray-500">
-                                            Tidak ada standar yang tersedia untuk LAM ini.
+                                            Tidak ada standar kriteria yang tersedia
                                         </div>
                                     )}
                                 </>
@@ -730,20 +1027,21 @@ export default function AccreditationSimulation({
                                     {/* Cycle Info */}
                                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                                         <h3 className="font-semibold text-blue-900">{cycle.cycle_name}</h3>
-                                        <p className="text-sm text-blue-700 mt-1">{cycle.lam.name}</p>
+                                        <p className="text-sm text-blue-700 mt-1">{displayLamName(cycle.lam)}</p>
                                     </div>
 
                                     {/* Actions */}
                                     <div className="flex gap-3">
                                         <button
                                             onClick={handleRunWithCurrentScores}
-                                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
+                                            disabled={runningCurrent}
+                                            className={`bg-blue-600 text-white px-4 py-2 rounded-lg transition flex items-center gap-2 ${runningCurrent ? 'opacity-60 cursor-not-allowed' : 'hover:bg-blue-700'}`}
                                         >
                                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                             </svg>
-                                            Jalankan dengan Skor Saat Ini
+                                            {runningCurrent ? 'Menjalankan...' : 'Jalankan dengan Skor Saat Ini'}
                                         </button>
                                         <button
                                             onClick={() => setShowRunModal(true)}
@@ -755,11 +1053,33 @@ export default function AccreditationSimulation({
                                             Simulasi Manual
                                         </button>
                                     </div>
+                                    {programSimulation && (
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                                            <div className="bg-blue-50 rounded-lg p-4">
+                                                <div className="text-sm text-blue-600 font-medium">Total Skor (Program)</div>
+                                                <div className="text-2xl font-bold text-blue-900 mt-1">
+                                                    {programSimulation.total_score.toFixed(2)}
+                                                </div>
+                                            </div>
+                                            <div className="bg-green-50 rounded-lg p-4">
+                                                <div className="text-sm text-green-600 font-medium">Prediksi Hasil (Program)</div>
+                                                <div className="text-2xl font-bold mt-1">
+                                                    {programSimulation.predicted_result}
+                                                </div>
+                                            </div>
+                                            <div className="bg-gray-50 rounded-lg p-4">
+                                                <div className="text-sm text-gray-600 font-medium">Kriteria Terhitung</div>
+                                                <div className="text-2xl font-bold text-gray-900 mt-1">
+                                                    {criteriaForChart.length}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
 
                                     {(pieData.length > 0 || radarData.length > 0) && (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             <div className="bg-white rounded-lg shadow p-6">
-                                                <h3 className="text-lg font-semibold mb-4">Distribusi Skor per Standar</h3>
+                                                <h3 className="text-lg font-semibold mb-4">Distribusi Skor per Kriteria</h3>
                                                 <div className="h-64">
                                                     <ResponsiveContainer width="100%" height="100%">
                                                         <PieChart>
@@ -784,7 +1104,7 @@ export default function AccreditationSimulation({
                                                 </div>
                                             </div>
                                             <div className="bg-white rounded-lg shadow p-6">
-                                                <h3 className="text-lg font-semibold mb-4">Radar Skor Standar</h3>
+                                                <h3 className="text-lg font-semibold mb-4">Radar Skor Kriteria</h3>
                                                 <div className="h-64">
                                                     <ResponsiveContainer width="100%" height="100%">
                                                         <RadarChart data={radarData}>
@@ -805,6 +1125,77 @@ export default function AccreditationSimulation({
                                         </div>
                                     )}
 
+                                    {programStandards && programStandards.length > 0 && (
+                                        <div className="bg-white rounded-lg shadow p-6">
+                                            <h3 className="text-lg font-semibold mb-4">Breakdown Bobot Kriteria Program</h3>
+                                            <div className="space-y-5">
+                                                {[...programStandards]
+                                                    .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+                                                    .flatMap((st) =>
+                                                        [...(st.criteria ?? [])]
+                                                            .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+                                                            .map((cr) => ({ cr, stOrder: st.order_index, stId: st.id }))
+                                                    )
+                                                    .map(({ cr, stOrder, stId }) => {
+                                                        const br = criteriaBreakdownMap[stId]?.[cr.id];
+                                                        return (
+                                                            <div key={cr.id} className="bg-white rounded-lg">
+                                                                <div className="flex items-center justify-between px-3 py-2">
+                                                                    <div className="text-sm text-gray-700">
+                                                                        {`Kriteria ${stOrder}.${cr.order_index}: ${cr.name ?? ''}`}
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded">{`Bobot: ${cr.weight}%`}</span>
+                                                                        {br && (
+                                                                            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">{`Skor: ${br.score.toFixed(2)}`}</span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="mt-1 ml-1 md:ml-4 space-y-2">
+                                                                    {cr.criteriaPoints && cr.criteriaPoints.length > 0 ? (
+                                                                        cr.criteriaPoints
+                                                                            .slice()
+                                                                            .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+                                                                            .map((point) => (
+                                                                                <div key={point.id} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                                                                    <div className="flex items-start justify-between mb-1">
+                                                                                        <div className="flex-1">
+                                                                                            <div className="font-medium text-gray-900">{point.title}</div>
+                                                                                            {point.description && (
+                                                                                                <p className="text-sm text-gray-600 mt-1">{point.description}</p>
+                                                                                            )}
+                                                                                        </div>
+                                                                                        <div className="ml-4">
+                                                                                            <div className="bg-gray-100 text-gray-800 px-2 py-1 rounded-lg text-xs font-medium">
+                                                                                                {`Bobot: ${point.max_score}`}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    {point.rubrics && point.rubrics.length > 0 && (
+                                                                                        <div className="mt-3 pt-3 border-t border-gray-200">
+                                                                                            <div className="text-xs font-medium text-gray-500 mb-2">Rubrik Penilaian:</div>
+                                                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                                                                {point.rubrics.map((rubric) => (
+                                                                                                    <div key={rubric.score} className="text-xs bg-gray-50 p-2 rounded">
+                                                                                                        <span className="font-medium">Skor {rubric.score}:</span> {rubric.description ?? '-'}
+                                                                                                    </div>
+                                                                                                ))}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            ))
+                                                                    ) : (
+                                                                        <div className="text-sm text-gray-500 italic">Tidak ada poin kriteria</div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {/* Latest Simulation Result */}
                                     {simulations.length > 0 && (
                                         <div className="bg-white rounded-lg shadow p-6">
@@ -813,13 +1204,62 @@ export default function AccreditationSimulation({
                                                 <div className="bg-blue-50 rounded-lg p-4">
                                                     <div className="text-sm text-blue-600 font-medium">Total Skor</div>
                                                     <div className="text-2xl font-bold text-blue-900 mt-1">
-                                                        {simulations[0].total_score.toFixed(2)}
+                                                    {(() => {
+                                                        const points = [...(programStandards ?? [])]
+                                                            .flatMap((st) => [...(st.criteria ?? [])])
+                                                            .flatMap((cr) => [...(cr.criteriaPoints ?? [])]);
+                                                        const sumWeights = points.reduce((acc, pt) => acc + Number(pt.max_score ?? 0), 0);
+                                                        const indicatorVals = Object.values(currentScores || {}).map((v) => Number(v)).filter((v) => Number.isFinite(v));
+                                                        const avgIndicatorScore = indicatorVals.length > 0 ? indicatorVals.reduce((a, b) => a + b, 0) / indicatorVals.length : 0;
+                                                        const defaultScore = 3;
+                                                        const chosenScore = avgIndicatorScore > 0 ? avgIndicatorScore : defaultScore;
+                                                        const total = chosenScore * sumWeights;
+                                                        return Number(total.toFixed(2));
+                                                    })()}
                                                     </div>
                                                 </div>
                                                 <div className="bg-green-50 rounded-lg p-4">
                                                     <div className="text-sm text-green-600 font-medium">Prediksi Hasil</div>
-                                                    <div className={`text-2xl font-bold mt-1 ${getResultColor(simulations[0].predicted_result).split(' ')[1]}`}>
-                                                        {simulations[0].predicted_result}
+                                                    <div className={`text-2xl font-bold mt-1 ${(() => {
+                                                        const points = [...(programStandards ?? [])]
+                                                            .flatMap((st) => [...(st.criteria ?? [])])
+                                                            .flatMap((cr) => [...(cr.criteriaPoints ?? [])]);
+                                                        const sumWeights = points.reduce((acc, pt) => acc + Number(pt.max_score ?? 0), 0);
+                                                        const indicatorVals = Object.values(currentScores || {}).map((v) => Number(v)).filter((v) => Number.isFinite(v));
+                                                        const avgIndicatorScore = indicatorVals.length > 0 ? indicatorVals.reduce((a, b) => a + b, 0) / indicatorVals.length : 0;
+                                                        const defaultScore = 3;
+                                                        const chosenScore = avgIndicatorScore > 0 ? avgIndicatorScore : defaultScore;
+                                                        const total = chosenScore * sumWeights;
+                                                        const grade =
+                                                            total >= 361
+                                                                ? 'Unggul'
+                                                                : total >= 301
+                                                                ? 'Baik Sekali'
+                                                                : total >= 200
+                                                                ? 'Baik'
+                                                                : 'Tidak Terakreditasi';
+                                                        return getResultColor(grade).split(' ')[1];
+                                                    })()}`}>
+                                                        {(() => {
+                                                            const points = [...(programStandards ?? [])]
+                                                                .flatMap((st) => [...(st.criteria ?? [])])
+                                                                .flatMap((cr) => [...(cr.criteriaPoints ?? [])]);
+                                                            const sumWeights = points.reduce((acc, pt) => acc + Number(pt.max_score ?? 0), 0);
+                                                            const indicatorVals = Object.values(currentScores || {}).map((v) => Number(v)).filter((v) => Number.isFinite(v));
+                                                            const avgIndicatorScore = indicatorVals.length > 0 ? indicatorVals.reduce((a, b) => a + b, 0) / indicatorVals.length : 0;
+                                                            const defaultScore = 3;
+                                                            const chosenScore = avgIndicatorScore > 0 ? avgIndicatorScore : defaultScore;
+                                                            const total = chosenScore * sumWeights;
+                                                            const grade =
+                                                                total >= 361
+                                                                    ? 'Unggul'
+                                                                    : total >= 301
+                                                                    ? 'Baik Sekali'
+                                                                    : total >= 200
+                                                                    ? 'Baik'
+                                                                    : 'Tidak Terakreditasi';
+                                                            return grade;
+                                                        })()}
                                                     </div>
                                                 </div>
                                                 <div className="bg-gray-50 rounded-lg p-4">
@@ -864,12 +1304,44 @@ export default function AccreditationSimulation({
                                                                     {new Date(sim.created_at).toLocaleString('id-ID')}
                                                                 </td>
                                                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                                    {sim.total_score.toFixed(2)}
+                                                                    {(() => {
+                                                                        const points = [...(programStandards ?? [])]
+                                                                            .flatMap((st) => [...(st.criteria ?? [])])
+                                                                            .flatMap((cr) => [...(cr.criteriaPoints ?? [])]);
+                                                                        const sumWeights = points.reduce((acc, pt) => acc + Number(pt.max_score ?? 0), 0);
+                                                                        const indicatorVals = Object.values(currentScores || {}).map((v) => Number(v)).filter((v) => Number.isFinite(v));
+                                                                        const avgIndicatorScore = indicatorVals.length > 0 ? indicatorVals.reduce((a, b) => a + b, 0) / indicatorVals.length : 0;
+                                                                        const defaultScore = 3;
+                                                                        const chosenScore = avgIndicatorScore > 0 ? avgIndicatorScore : defaultScore;
+                                                                        const total = chosenScore * sumWeights;
+                                                                        return Number(total.toFixed(2));
+                                                                    })()}
                                                                 </td>
                                                                 <td className="px-6 py-4 whitespace-nowrap">
-                                                                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${getResultColor(sim.predicted_result)}`}>
-                                                                        {sim.predicted_result}
-                                                                    </span>
+                                                                    {(() => {
+                                                                        const points = [...(programStandards ?? [])]
+                                                                            .flatMap((st) => [...(st.criteria ?? [])])
+                                                                            .flatMap((cr) => [...(cr.criteriaPoints ?? [])]);
+                                                                        const sumWeights = points.reduce((acc, pt) => acc + Number(pt.max_score ?? 0), 0);
+                                                                        const indicatorVals = Object.values(currentScores || {}).map((v) => Number(v)).filter((v) => Number.isFinite(v));
+                                                                        const avgIndicatorScore = indicatorVals.length > 0 ? indicatorVals.reduce((a, b) => a + b, 0) / indicatorVals.length : 0;
+                                                                        const defaultScore = 3;
+                                                                        const chosenScore = avgIndicatorScore > 0 ? avgIndicatorScore : defaultScore;
+                                                                        const total = chosenScore * sumWeights;
+                                                                        const grade =
+                                                                            total >= 361
+                                                                                ? 'Unggul'
+                                                                                : total >= 301
+                                                                                ? 'Baik Sekali'
+                                                                                : total >= 200
+                                                                                ? 'Baik'
+                                                                                : 'Tidak Terakreditasi';
+                                                                        return (
+                                                                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${getResultColor(grade)}`}>
+                                                                                {grade}
+                                                                            </span>
+                                                                        );
+                                                                    })()}
                                                                 </td>
                                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                                                     {sim.creator?.name || 'N/A'}
@@ -903,8 +1375,9 @@ export default function AccreditationSimulation({
                                     <h3 className="text-lg font-semibold">Detail Simulasi</h3>
                                     {detail && (
                                         <div className="mt-1 text-sm text-gray-600">
-                                            <span className="mr-4">Total Skor: <span className="font-medium text-gray-900">{detail.total_score?.toFixed(2)}</span></span>
-                                            <span>Prediksi: <span className="font-medium text-gray-900">{detail.predicted_result}</span></span>
+                                            <span className="mr-4">Total Skor: <span className="font-medium text-gray-900">{Number((detail as any).cp_total_score ?? 0).toFixed(2)}</span></span>
+                                            <span className="mr-4">Nilai Akhir: <span className="font-medium text-gray-900">{Number((detail as any).cp_final_percentage ?? 0).toFixed(2)}%</span></span>
+                                            <span>Prediksi: <span className="font-medium text-gray-900">{(detail as any).cp_grade ?? detail.predicted_result}</span></span>
                                         </div>
                                     )}
                                 </div>
@@ -930,44 +1403,124 @@ export default function AccreditationSimulation({
                             )}
                             {!detailLoading && !detailError && detail && (
                                 <div className="mt-6 space-y-6">
-                                    <div className="bg-white rounded-lg">
-                                        <h4 className="text-md font-semibold text-gray-900 mb-3">Skor per Standar</h4>
-                                        <div className="overflow-x-auto">
-                                            <table className="min-w-full divide-y divide-gray-200">
-                                                <thead className="bg-gray-50">
-                                                    <tr>
-                                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Kode</th>
-                                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Standar</th>
-                                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Skor</th>
-                                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Bobot</th>
-                                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Skor Tertimbang</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="bg-white divide-y divide-gray-200">
-                                                    {(detail.standard_scores ?? []).map((s, idx) => (
-                                                        <tr key={`${s.standard_id}-${idx}`} className="hover:bg-gray-50">
-                                                            <td className="px-4 py-2 text-sm text-gray-900">{s.code}</td>
-                                                            <td className="px-4 py-2 text-sm text-gray-700">{s.name}</td>
-                                                            <td className="px-4 py-2 text-sm font-medium text-gray-900">{s.score.toFixed(2)}</td>
-                                                            <td className="px-4 py-2 text-sm text-gray-700">{s.weight}</td>
-                                                            <td className="px-4 py-2 text-sm font-medium text-gray-900">{s.weighted_score.toFixed(2)}</td>
+                                <div className="bg-white rounded-lg">
+                                    <h4 className="text-md font-semibold text-gray-900 mb-3">Skor per Kriteria</h4>
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full divide-y divide-gray-200">
+                                            <thead className="bg-gray-50">
+                                                <tr>
+                                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Kriteria</th>
+                                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Bobot Kriteria</th>
+                                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Skor Total</th>
+                                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Maksimum</th>
+                                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Persentase</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="bg-white divide-y divide-gray-200">
+                                                {(() => {
+                                                    const indicatorVals = Object.values(currentScores || {}).map((v) => Number(v)).filter((v) => Number.isFinite(v));
+                                                    const avgIndicatorScore = indicatorVals.length > 0 ? indicatorVals.reduce((a, b) => a + b, 0) / indicatorVals.length : 0;
+                                                    const defaultScore = 3;
+                                                    const chosenScore = avgIndicatorScore > 0 ? avgIndicatorScore : defaultScore;
+                                                    const criteriaList = [...(programStandards ?? [])]
+                                                        .flatMap((st) => [...(st.criteria ?? [])])
+                                                        .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+                                                        .map((cr) => {
+                                                            const points = [...(cr.criteriaPoints ?? [])];
+                                                            const weightSum = points.reduce((acc, pt) => acc + Number(pt.max_score ?? 0), 0);
+                                                            const totalScore = points.reduce((acc, pt) => acc + chosenScore * Number(pt.max_score ?? 0), 0);
+                                                            const maxScore = weightSum * 4;
+                                                            const percentage = maxScore > 0 ? (totalScore / maxScore) * 100 : 0;
+                                                            return {
+                                                                id: cr.id,
+                                                                name: cr.name,
+                                                                weightSum,
+                                                                totalScore,
+                                                                maxScore,
+                                                                percentage,
+                                                            };
+                                                        });
+                                                    return criteriaList.map((c) => (
+                                                        <tr key={`crit-${c.id}`} className="hover:bg-gray-50">
+                                                            <td className="px-4 py-2 text-sm text-gray-700">{c.name}</td>
+                                                            <td className="px-4 py-2 text-sm text-gray-700">{Number(c.weightSum).toFixed(2)}</td>
+                                                            <td className="px-4 py-2 text-sm font-medium text-gray-900">{Number(c.totalScore).toFixed(2)}</td>
+                                                            <td className="px-4 py-2 text-sm text-gray-700">{Number(c.maxScore).toFixed(2)}</td>
+                                                            <td className="px-4 py-2 text-sm text-gray-700">{Number(c.percentage).toFixed(2)}%</td>
                                                         </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
+                                                    ));
+                                                })()}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                    <div className="bg-white rounded-lg mt-6">
+                                        <h4 className="text-md font-semibold text-gray-900 mb-3">Skor per Poin Kriteria</h4>
+                                        {(programStandards ?? []).length === 0 ? (
+                                            <div className="text-sm text-gray-500">Tidak ada data poin kriteria.</div>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                {(() => {
+                                                    const cpScores = detail?.criteria_point_scores ?? {};
+                                                    const scoreValues = Object.values(cpScores);
+                                                    const noScores = scoreValues.length === 0 || scoreValues.every((v) => Number(v) === 0);
+                                                    return noScores ? (
+                                                        <div className="px-4 py-2 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded">
+                                                            Belum ada penilaian asesor untuk poin kriteria. Skor akan muncul setelah evaluasi dilakukan.
+                                                        </div>
+                                                    ) : null;
+                                                })()}
+                                                {(() => {
+                                                    const list = [...(programStandards ?? [])]
+                                                        .flatMap((st) => [...(st.criteria ?? [])])
+                                                        .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0));
+                                                    return list.map((cr) => (
+                                                        <div key={`prog-cr-${cr.id}`} className="border rounded">
+                                                            <div className="px-3 py-2 bg-gray-50 text-sm text-gray-700">
+                                                                Kriteria {cr.order_index} • {cr.name} • Bobot {cr.weight}
+                                                            </div>
+                                                            <div className="p-3">
+                                                                <div className="overflow-x-auto">
+                                                                    <table className="min-w-full divide-y divide-gray-200">
+                                                                        <thead className="bg-gray-50">
+                                                                            <tr>
+                                                                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Poin Kriteria</th>
+                                                                                                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Bobot</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody className="bg-white divide-y divide-gray-200">
+                                                                            {[...(cr.criteriaPoints ?? [])]
+                                                                                .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+                                                                                .map((pt) => (
+                                                                                    <tr key={`prog-pt-${pt.id}`} className="hover:bg-gray-50">
+                                                                                        <td className="px-3 py-2 text-sm text-gray-700">{pt.title}</td>
+                                                                                        <td className="px-3 py-2 text-sm text-gray-700">{pt.max_score}</td>
+                                                                                    </tr>
+                                                                                ))}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ));
+                                                })()}
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div className="bg-white rounded-lg shadow p-6">
-                                            <h4 className="text-md font-semibold text-gray-900 mb-3">Radar Skor Standar</h4>
+                                            <h4 className="text-md font-semibold text-gray-900 mb-3">Radar Skor Kriteria</h4>
                                             <div className="h-60">
                                                 <ResponsiveContainer width="100%" height="100%">
                                                     <RadarChart
-                                                        data={(detail.standard_scores ?? []).map((s) => ({
-                                                            label: s.code,
-                                                            score: s.score,
-                                                        }))}
+                                                        data={Object.values(detail?.criteria_breakdown ?? {})
+                                                            .flat()
+                                                            .map((cr: any) => ({
+                                                                label: cr.code,
+                                                                score: Number(cr.score),
+                                                            }))}
                                                     >
                                                         <PolarGrid />
                                                         <PolarAngleAxis dataKey="label" />
@@ -980,45 +1533,8 @@ export default function AccreditationSimulation({
                                         </div>
 
                                         <div className="bg-white rounded-lg shadow p-6">
-                                            <h4 className="text-md font-semibold text-gray-900 mb-3">Gap Analysis</h4>
-                                            {(detail.gap_analysis ?? []).length === 0 ? (
-                                                <div className="text-sm text-gray-500">Tidak ada gap signifikan.</div>
-                                            ) : (
-                                                <div className="overflow-x-auto">
-                                                    <table className="min-w-full divide-y divide-gray-200">
-                                                        <thead className="bg-gray-50">
-                                                            <tr>
-                                                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Standar</th>
-                                                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Skor Saat Ini</th>
-                                                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Skor Maks</th>
-                                                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Gap</th>
-                                                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Prioritas</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="bg-white divide-y divide-gray-200">
-                                                            {(detail.gap_analysis ?? []).map((g, idx) => (
-                                                                <tr key={`${g.standard_code}-${idx}`} className="hover:bg-gray-50">
-                                                                    <td className="px-4 py-2 text-sm text-gray-900">{g.standard_code} - {g.standard_name}</td>
-                                                                    <td className="px-4 py-2 text-sm text-gray-700">{g.current_score.toFixed(2)}</td>
-                                                                    <td className="px-4 py-2 text-sm text-gray-700">{g.max_score}</td>
-                                                                    <td className="px-4 py-2 text-sm font-medium text-gray-900">{g.gap.toFixed(2)}</td>
-                                                                    <td className="px-4 py-2 text-sm">
-                                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                                                            g.priority === 'high'
-                                                                                ? 'bg-red-100 text-red-800'
-                                                                                : g.priority === 'medium'
-                                                                                    ? 'bg-yellow-100 text-yellow-800'
-                                                                                    : 'bg-blue-100 text-blue-800'
-                                                                        }`}>
-                                                                            {g.priority}
-                                                                        </span>
-                                                                    </td>
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            )}
+                                            <h4 className="text-md font-semibold text-gray-900 mb-3">Distribusi Skor Kriteria</h4>
+                                            <div className="text-sm text-gray-600">Visualisasi skor kriteria ditampilkan pada radar chart di sebelah kiri.</div>
                                         </div>
                                     </div>
                                 </div>
@@ -1036,17 +1552,14 @@ export default function AccreditationSimulation({
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">LAM Framework</label>
                                     <select
-                                        value={data.lam_id}
+                                        value={data.lam_id || defaultLamId}
                                         onChange={(e) => setData('lam_id', e.target.value)}
                                         className="w-full border border-gray-300 rounded-lg px-3 py-2"
                                         required
                                     >
-                                        <option value="">Pilih LAM</option>
-                                        {lams.map((lam) => (
-                                            <option key={lam.id} value={lam.id}>
-                                                {lam.name}
-                                            </option>
-                                        ))}
+                                        <option value={defaultLamId || ''} disabled={!defaultLamId}>
+                                            {programLamName || (prodi as any)?.lam?.name || 'LAM belum diatur'}
+                                        </option>
                                     </select>
                                     {errors.lam_id && <p className="text-red-500 text-xs mt-1">{errors.lam_id}</p>}
                                 </div>
@@ -1130,6 +1643,7 @@ export default function AccreditationSimulation({
                                         <div key={indicatorId} className="flex items-center gap-3">
                                             <label className="flex-1 text-sm text-gray-700">
                                                 {ind.code}: {ind.name}
+                                                <span className="ml-2 text-xs text-gray-500">Bobot {ind.weight}</span>
                                             </label>
                                             <input
                                                 type="number"
